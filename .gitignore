@@ -1,0 +1,4 @@
+.pio/
+include/secrets.h
+backup/
+deploy.env
