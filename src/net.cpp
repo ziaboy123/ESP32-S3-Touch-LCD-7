@@ -81,6 +81,12 @@ std::shared_ptr<Snapshot> parse(JsonDocument &doc) {
   for (JsonObject e : doc["events"].as<JsonArray>())
     s->events.push_back({e["ago"] | "", e["title"] | "", e["text"] | "", e["source"] | "", parseColor(e["color"])});
   s->proxmoxConfigured = doc["proxmox"] | false;
+  JsonObject px = doc["proxmox_summary"];
+  s->pxHostsUp = px["hosts_up"] | 0;
+  s->pxHosts = px["hosts"] | 0;
+  s->pxGuestsRunning = px["guests_running"] | 0;
+  s->pxGuests = px["guests"] | 0;
+  s->pxProblems = px["problems"] | 0;
   JsonObject n = doc["net"];
   s->netReady = n["ready"] | false;
   s->netOnline = n["online"] | false;

@@ -1503,16 +1503,15 @@ void applyTiles() {
   setTile(kHomelab, String(ok) + " of " + String(total) + " checks ok", ok == total ? kOk : kAlert,
           ok == total ? kBorder : kAlert);
 
+  // From the live summary in every state update — never the Proxmox
+  // section's last load, which could be minutes old (found live).
   if (!snap->proxmoxConfigured) setTile(kProxmox, "Needs a token", kWarn);
-  else if (proxmoxHave) {
-    int hosts = 0, guests = 0, running = 0;
-    for (JsonObjectConst n : proxmoxDoc["nodes"].as<JsonArrayConst>()) hosts += (n["online"] | false) ? 1 : 0;
-    for (JsonObjectConst g : proxmoxDoc["guests"].as<JsonArrayConst>()) {
-      guests++;
-      running += (g["running"] | false) ? 1 : 0;
-    }
-    setTile(kProxmox, String(hosts) + " hosts, " + String(running) + "/" + String(guests) + " running", kOk);
-  } else setTile(kProxmox, "Hosts and containers", kMuted);
+  else if (!snap->pxHosts) setTile(kProxmox, "Checking...", kMuted);
+  else if (snap->pxProblems)
+    setTile(kProxmox, String(snap->pxProblems) + (snap->pxProblems == 1 ? " problem" : " problems"), kAlert, kAlert);
+  else
+    setTile(kProxmox, String(snap->pxHostsUp) + "/" + String(snap->pxHosts) + " hosts, " + String(snap->pxGuestsRunning) + "/" +
+                          String(snap->pxGuests) + " running", kOk);
 
   if (!snap->netReady) setTile(kNetwork, "Waiting for UniFi", kMuted);
   else if (!snap->netOnline) setTile(kNetwork, "Internet down", kAlert, kAlert);

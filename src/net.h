@@ -58,6 +58,8 @@ struct Snapshot {
   std::vector<PanelEvent> events;
   std::vector<PanelAction> actions;
   bool proxmoxConfigured = false;
+  // Live counts from Arc's 30s Proxmox sense, for the home tile.
+  int pxHostsUp = 0, pxHosts = 0, pxGuestsRunning = 0, pxGuests = 0, pxProblems = 0;
   // Network (UniFi): WAN status, live rates in kbps, ~30 min of history.
   bool netReady = false, netOnline = false;
   String netIsp, netUptime;
