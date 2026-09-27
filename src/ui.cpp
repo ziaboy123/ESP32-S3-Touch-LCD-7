@@ -61,8 +61,10 @@ lv_obj_t *feedList;
 // Homelab / Minecraft / Controls
 lv_obj_t *homelabList;
 lv_obj_t *mcState, *mcPlayers, *mcTps, *mcButtons, *mcLogList;
-lv_obj_t *controlsPage;
-lv_obj_t *quietLabel;
+lv_obj_t *quietLabel = nullptr;
+lv_obj_t *wakeButton = nullptr, *wakeLabel = nullptr;  // Wake PC, relabelled with the PC's state
+lv_obj_t *pcStateLabel = nullptr, *pcHint = nullptr;
+lv_obj_t *controlTileStatus[4];
 
 lv_obj_t *toast;
 lv_timer_t *toastTimer;
@@ -99,6 +101,16 @@ void setBorder(lv_obj_t *obj, uint32_t color, int width) {
   if (lv_color_to_u32(lv_obj_get_style_border_color(obj, LV_PART_MAIN)) != lv_color_to_u32(lv_color_hex(color)))
     lv_obj_set_style_border_color(obj, lv_color_hex(color), 0);
   if (lv_obj_get_style_border_width(obj, LV_PART_MAIN) != width) lv_obj_set_style_border_width(obj, width, 0);
+}
+
+// Widgets on sub-pages come and go; a slot tracked here is nulled the
+// moment its widget is deleted, so updates never touch a dead pointer.
+void track(lv_obj_t *obj, lv_obj_t **slot) {
+  *slot = obj;
+  lv_obj_add_event_cb(obj, [](lv_event_t *e) {
+    lv_obj_t **slot = (lv_obj_t **)lv_event_get_user_data(e);
+    if (*slot == lv_event_get_target_obj(e)) *slot = nullptr;
+  }, LV_EVENT_DELETE, slot);
 }
 
 // --- Small builders --------------------------------------------------------
@@ -212,7 +224,11 @@ lv_obj_t *actionButton(lv_obj_t *parent, const PanelAction &a, int w, int h) {
     if (payload.endsWith("1")) confirmThen(id, label);
     else run(id, label);
   }, LV_EVENT_CLICKED, payload);
-  if (a.id == "arc:quiet") quietLabel = l;
+  if (a.id == "arc:quiet") track(l, &quietLabel);
+  if (a.id == "office:wake-pc") {
+    track(b, &wakeButton);
+    track(l, &wakeLabel);
+  }
   return b;
 }
 
@@ -310,7 +326,7 @@ void showWifiSetup() {
 // with Back. Data comes from Arc (which reads it through Beacon), fetched
 // only while a page is open.
 
-enum class Page { None, Players, World, Inventory };
+enum class Page { None, Players, World, Inventory, Pc, ArcTools, Restarts, PanelSettings };
 Page openPage = Page::None;
 lv_obj_t *pageLayer, *pageTitle, *pageBody;
 uint32_t pageFetchedAt = 0;
@@ -978,6 +994,86 @@ void fetchProxmox() {
   net::fetchDetail("/panel/proxmox");
 }
 
+// Controls pages ---------------------------------------------------------
+// Built fresh each time they open, from the backend's current action list,
+// in the same full-screen page layer as the Minecraft sub-pages.
+
+void applyPc();
+void applyQuiet();
+
+lv_obj_t *actionGrid(const char *group, int w, int h) {
+  lv_obj_t *grid = bare(pageBody);
+  lv_obj_set_size(grid, 776, 352);
+  lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_style_pad_row(grid, 12, 0);
+  lv_obj_set_style_pad_column(grid, 12, 0);
+  lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+  int count = 0;
+  for (const auto &a : snap->actions)
+    if (a.group == group) {
+      actionButton(grid, a, w, h);
+      count++;
+    }
+  if (!count) text(grid, &lv_font_montserrat_20, kMuted, "Nothing here yet.");
+  return grid;
+}
+
+void renderControlsPage(Page page) {
+  lv_obj_clean(pageBody);
+  worldClock = nullptr;
+  if (!snap) return pageMessage("Waiting for Arc...");
+
+  if (page == Page::Pc) {
+    lv_obj_t *card = box(pageBody, 380, 352);
+    lv_obj_set_style_pad_all(card, 20, 0);
+    text(card, &lv_font_montserrat_14, kMuted, "Gaming PC");
+    track(text(card, &lv_font_montserrat_48, kText, "-"), &pcStateLabel);
+    lv_obj_align(pcStateLabel, LV_ALIGN_TOP_LEFT, 0, 24);
+    track(text(card, &lv_font_montserrat_16, kMuted, ""), &pcHint);
+    lv_obj_set_width(pcHint, 336);
+    lv_label_set_long_mode(pcHint, LV_LABEL_LONG_WRAP);
+    lv_obj_align(pcHint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    const PanelAction *wake = nullptr;
+    for (const auto &a : snap->actions)
+      if (a.id == "office:wake-pc") wake = &a;
+    if (wake) {
+      lv_obj_t *b = actionButton(pageBody, *wake, 384, 352);
+      lv_obj_set_pos(b, 392, 0);
+      lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_36, 0);
+    } else {
+      lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "Wake-on-LAN isn't set up."), 400, 20);
+    }
+    applyPc();
+  } else if (page == Page::ArcTools) {
+    actionGrid("Arc", 382, 110);
+    applyQuiet();
+  } else if (page == Page::Restarts) {
+    actionGrid("Restart", 184, 80);
+  } else if (page == Page::PanelSettings) {
+    lv_obj_t *grid = bare(pageBody);
+    lv_obj_set_size(grid, 776, 130);
+    row(grid, 12);
+    lv_obj_t *wifi = localButton(grid, LV_SYMBOL_WIFI "  Wi-Fi setup", [](lv_event_t *) { showWifiSetup(); });
+    lv_obj_t *off = localButton(grid, LV_SYMBOL_EYE_CLOSE "  Screen off", [](lv_event_t *) {
+      screenOffByHand = true;
+      board::setBacklight(false);
+    });
+    for (lv_obj_t *b : {wifi, off}) lv_obj_set_size(b, 382, 110);
+    String info = "Wi-Fi: " + net::wifiSsid() + "\nAddress: " + WiFi.localIP().toString() +
+                  "\nFirmware: " + ESP.getSketchMD5().substring(0, 7) +
+                  "\nUp " + String(millis() / 3600000) + "h " + String(millis() / 60000 % 60) + "m";
+    lv_obj_t *facts = text(pageBody, &lv_font_montserrat_16, kMuted, info.c_str());
+    lv_obj_set_style_text_line_space(facts, 8, 0);
+    lv_obj_set_pos(facts, 4, 150);
+  }
+}
+
+void openControls(Page page) {
+  const char *title = page == Page::Pc ? "PC" : page == Page::ArcTools ? "Arc" : page == Page::Restarts ? "Restarts" : "Panel";
+  showPage(page, title);
+  renderControlsPage(page);
+}
+
 void handleDetail() {
   String path, body;
   int status;
@@ -1158,10 +1254,27 @@ void buildMinecraft(lv_obj_t *tab) {
   lv_obj_set_style_pad_column(mcButtons, 10, 0);
 }
 
+// Controls: four tiles, each opening its own page (Back returns here).
 void buildControls(lv_obj_t *tab) {
-  controlsPage = bare(tab);
-  lv_obj_set_size(controlsPage, 776, LV_SIZE_CONTENT);
-  column(controlsPage, 8);
+  lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
+  const char *titles[4] = {"PC", "Arc", "Restarts", "Panel"};
+  const char *icons[4] = {LV_SYMBOL_POWER, LV_SYMBOL_BELL, LV_SYMBOL_REFRESH, LV_SYMBOL_SETTINGS};
+  const Page pages[4] = {Page::Pc, Page::ArcTools, Page::Restarts, Page::PanelSettings};
+  for (int i = 0; i < 4; i++) {
+    lv_obj_t *tile = box(tab, 383, 171);
+    lv_obj_set_pos(tile, (i % 2) * 393, (i / 2) * 181);
+    lv_obj_set_style_pad_all(tile, 18, 0);
+    lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_color(tile, lv_color_hex(0x1E1E22), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(tile, [](lv_event_t *e) { openControls((Page)(intptr_t)lv_event_get_user_data(e)); },
+                        LV_EVENT_CLICKED, (void *)(intptr_t)pages[i]);
+    text(tile, &lv_font_montserrat_24, kAccent, icons[i]);
+    lv_obj_align(text(tile, &lv_font_montserrat_28, kText, titles[i]), LV_ALIGN_TOP_LEFT, 44, -2);
+    controlTileStatus[i] = text(tile, &lv_font_montserrat_16, kMuted, "");
+    lv_obj_set_width(controlTileStatus[i], 340);
+    lv_label_set_long_mode(controlTileStatus[i], LV_LABEL_LONG_DOT);
+    lv_obj_align(controlTileStatus[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  }
 }
 
 lv_obj_t *homeLayer;
@@ -1417,27 +1530,11 @@ void applyMinecraft() {
   applyMcLog();
 }
 
-void section(const char *title) {
-  lv_obj_t *l = text(controlsPage, &lv_font_montserrat_16, kMuted, title);
-  lv_obj_set_style_pad_top(l, 6, 0);
-}
-
-lv_obj_t *buttonRow() {
-  lv_obj_t *r = bare(controlsPage);
-  lv_obj_set_size(r, 776, LV_SIZE_CONTENT);
-  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_style_pad_row(r, 10, 0);
-  lv_obj_set_style_pad_column(r, 10, 0);
-  return r;
-}
-
 void applyActions() {
   String sig;
   for (const auto &a : snap->actions) sig += a.id + ",";
   if (sig == actionsSig) return;
   actionsSig = sig;
-  quietLabel = nullptr;
-
   lv_obj_clean(mcButtons);
   for (const auto &a : snap->actions)
     if (a.group == "Minecraft") actionButton(mcButtons, a, 190, 72);
@@ -1449,28 +1546,28 @@ void applyActions() {
     lv_obj_set_style_border_color(b, lv_color_hex(kAccent), 0);
   }
 
-  lv_obj_clean(controlsPage);
-  const char *groups[] = {"Arc", "Restart", "Office"};
-  for (const char *group : groups) {
-    lv_obj_t *r = nullptr;
-    for (const auto &a : snap->actions) {
-      if (a.group != group) continue;
-      if (!r) {
-        section(group);
-        r = buttonRow();
-      }
-      actionButton(r, a, 182, 64);
-    }
+}
+
+// "PC is on" (green, not pressable) while the network sees it; "Wake PC"
+// once it's gone. UniFi takes a few minutes to drop a switched-off PC.
+void applyPc() {
+  if (pcStateLabel) {
+    setText(pcStateLabel, !snap->pcConfigured ? "-" : snap->pcOnline ? "On" : "Off");
+    setTextColor(pcStateLabel, snap->pcOnline ? kOk : kMuted);
+    setText(pcHint, snap->pcOnline ? "It's on the network. Shut it down from Windows as usual."
+                                   : "Wake-on-LAN starts it over the network; it takes about half a minute "
+                                     "to boot. After a shutdown it shows as off within a few minutes.");
   }
-  section("Panel");
-  lv_obj_t *r = buttonRow();
-  localButton(r, LV_SYMBOL_WIFI " Wi-Fi", [](lv_event_t *) { showWifiSetup(); });
-  localButton(r, LV_SYMBOL_EYE_CLOSE " Screen off", [](lv_event_t *) {
-    screenOffByHand = true;
-    board::setBacklight(false);
-  });
-  String build = "Firmware " + ESP.getSketchMD5().substring(0, 7) + "  |  " + WiFi.localIP().toString();
-  text(controlsPage, &lv_font_montserrat_14, kMuted, build.c_str());
+  if (!wakeButton) return;
+  if (snap->pcOnline) {
+    setText(wakeLabel, LV_SYMBOL_OK " PC is on");
+    setTextColor(wakeLabel, kOk);
+    lv_obj_add_state(wakeButton, LV_STATE_DISABLED);
+  } else {
+    setText(wakeLabel, LV_SYMBOL_POWER " Wake PC");
+    setTextColor(wakeLabel, kText);
+    lv_obj_remove_state(wakeButton, LV_STATE_DISABLED);
+  }
 }
 
 void applyQuiet() {
@@ -1485,6 +1582,11 @@ void setTile(int section, const String &status, uint32_t color, uint32_t border 
   setText(tileStatus[section], status.c_str());
   setTextColor(tileStatus[section], color);
   setBorder(tiles[section], border, border == kBorder ? 1 : 2);
+}
+
+void setControlTile(int i, const String &status, uint32_t color) {
+  setText(controlTileStatus[i], status.c_str());
+  setTextColor(controlTileStatus[i], color);
 }
 
 // Each home tile's one-line status, so the home screen is glanceable too.
@@ -1521,8 +1623,21 @@ void applyTiles() {
   else if (!snap->mcUp) setTile(kMinecraft, "Offline", kAlert, kAlert);
   else setTile(kMinecraft, snap->mcOnline ? "Online, " + String(snap->mcOnline) + " playing" : String("Online, nobody on"), kOk);
 
-  setTile(kControls, snap->quietSeconds > 0 ? String("Quiet mode on") : String("Restarts and tools"),
-          snap->quietSeconds > 0 ? kWarn : kMuted);
+  // Controls' own four tiles.
+  if (!snap->pcConfigured) setControlTile(0, "Not set up", kMuted);
+  else setControlTile(0, snap->pcOnline ? "On" : "Off", snap->pcOnline ? kOk : kMuted);
+  if (snap->quietSeconds > 0)
+    setControlTile(1, "Quiet: " + String((snap->quietSeconds + 59) / 60) + "m left", kWarn);
+  else if (snap->unacked > 0) setControlTile(1, String(snap->unacked) + " to acknowledge", kAlert);
+  else setControlTile(1, "Check, acknowledge, quiet, brief", kMuted);
+  int restarts = 0;
+  for (const auto &a : snap->actions) restarts += a.group == "Restart";
+  setControlTile(2, String(restarts) + " services", kMuted);
+  setControlTile(3, "Wi-Fi " + net::wifiSsid(), kMuted);
+
+  if (snap->quietSeconds > 0) setTile(kControls, "Quiet mode on", kWarn);
+  else if (snap->pcConfigured) setTile(kControls, snap->pcOnline ? "PC is on" : "PC is off", snap->pcOnline ? kOk : kMuted);
+  else setTile(kControls, "Restarts and tools", kMuted);
 }
 
 void setPill(const String &label, uint32_t bg, uint32_t fg) {
@@ -1603,6 +1718,7 @@ void update() {
       applyMinecraft();
       applyActions();
       applyQuiet();
+      applyPc();
       applyNetwork();
       applyTiles();
       // A new alert while nobody's using the panel: show it, don't wait to be asked.
