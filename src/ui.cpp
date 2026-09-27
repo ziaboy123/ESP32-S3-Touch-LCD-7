@@ -43,7 +43,7 @@ constexpr uint32_t kHomeAfterMs = 3 * 60 * 1000;  // untouched this long: drift 
 constexpr uint32_t kProxmoxRefreshMs = 15000;
 
 // The home screen's tiles, each opening one full-screen section.
-enum Section { kOverview, kHomelab, kProxmox, kNetwork, kMinecraft, kControls, kSectionCount };
+enum Section { kOverview, kHomelab, kOffice, kNetwork, kMinecraft, kControls, kSectionCount };
 constexpr int kHome = -1;
 int currentSection = kHome;
 bool screenOffByHand = false;  // Screen off button pressed; see applyBacklight()
@@ -64,7 +64,7 @@ lv_obj_t *mcState, *mcPlayers, *mcTps, *mcButtons, *mcLogList;
 lv_obj_t *quietLabel = nullptr;
 lv_obj_t *wakeButton = nullptr, *wakeLabel = nullptr;  // Wake PC, relabelled with the PC's state
 lv_obj_t *pcStateLabel = nullptr, *pcHint = nullptr;
-lv_obj_t *controlTileStatus[4];
+lv_obj_t *controlTileStatus[3], *officeTileStatus[2];
 
 lv_obj_t *toast;
 lv_timer_t *toastTimer;
@@ -902,14 +902,14 @@ void applyNetwork() {
 // Hosts across the top (CPU/RAM/disk bars), every container and VM below.
 // Fetched from Arc only while the section is open (read-only API token).
 
-lv_obj_t *proxmoxBody;
+lv_obj_t *proxmoxBody, *homelabBody;  // Proxmox sits at the top of the scrolling Homelab section
 JsonDocument proxmoxDoc;
 bool proxmoxHave = false;
 uint32_t proxmoxFetchedAt = 0;
 
 void proxmoxMessage(const char *message) {
   lv_obj_clean(proxmoxBody);
-  lv_obj_center(text(proxmoxBody, &lv_font_montserrat_20, kMuted, message));
+  text(proxmoxBody, &lv_font_montserrat_20, kMuted, message);
 }
 
 void meter(lv_obj_t *parent, const String &label, float fraction) {
@@ -925,9 +925,9 @@ void meter(lv_obj_t *parent, const String &label, float fraction) {
 }
 
 void renderProxmox() {
-  lv_coord_t scroll = 0;
-  lv_obj_t *oldList = lv_obj_get_child_count(proxmoxBody) > 1 ? lv_obj_get_child(proxmoxBody, -1) : nullptr;
-  if (oldList) scroll = lv_obj_get_scroll_y(oldList);
+  // Rebuilt every refresh; keep the Homelab section's scroll position so a
+  // refresh never throws you back to the top while reading the checks.
+  lv_coord_t scroll = lv_obj_get_scroll_y(homelabBody);
   lv_obj_clean(proxmoxBody);
 
   lv_obj_t *hosts = bare(proxmoxBody);
@@ -962,11 +962,9 @@ void renderProxmox() {
           (n["disk_gb"] | 0.0f) / diskTotal);
   }
 
-  lv_obj_t *list = box(proxmoxBody, 776, 192);
-  lv_obj_set_pos(list, 0, 160);
+  lv_obj_t *list = box(proxmoxBody, 776, LV_SIZE_CONTENT);
   lv_obj_set_style_pad_all(list, 10, 0);
   column(list, 4);
-  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
   for (JsonObjectConst g : proxmoxDoc["guests"].as<JsonArrayConst>()) {
     bool running = g["running"] | false;
     lv_obj_t *r = bare(list);
@@ -985,8 +983,8 @@ void renderProxmox() {
                            : String((g["expected_off"] | false) ? "off, as expected" : "stopped");
     lv_obj_align(text(r, &lv_font_montserrat_14, running ? kText : kMuted, usage.c_str()), LV_ALIGN_RIGHT_MID, 0, 0);
   }
-  lv_obj_update_layout(list);
-  lv_obj_scroll_to_y(list, scroll, LV_ANIM_OFF);  // a refresh shouldn't lose your place
+  lv_obj_update_layout(homelabBody);
+  lv_obj_scroll_to_y(homelabBody, scroll, LV_ANIM_OFF);
 }
 
 void fetchProxmox() {
@@ -1090,7 +1088,7 @@ void handleDetail() {
   bool world = path.startsWith("/panel/minecraft/world");
   bool inventory = path.startsWith("/panel/minecraft/inventory/");
   if (path == "/panel/proxmox") {
-    if (currentSection != kProxmox) return;
+    if (currentSection != kHomelab) return;
     if (status == 200 && !deserializeJson(proxmoxDoc, body)) {
       proxmoxHave = true;
       renderProxmox();
@@ -1262,27 +1260,40 @@ void buildMinecraft(lv_obj_t *tab) {
   lv_obj_set_style_pad_column(mcButtons, 10, 0);
 }
 
-// Controls: four tiles, each opening its own page (Back returns here).
-void buildControls(lv_obj_t *tab) {
-  lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
-  const char *titles[4] = {"PC", "Arc", "Restarts", "Panel"};
-  const char *icons[4] = {LV_SYMBOL_POWER, LV_SYMBOL_BELL, LV_SYMBOL_REFRESH, LV_SYMBOL_SETTINGS};
-  const Page pages[4] = {Page::Pc, Page::ArcTools, Page::Restarts, Page::PanelSettings};
-  for (int i = 0; i < 4; i++) {
-    lv_obj_t *tile = box(tab, 383, 171);
-    lv_obj_set_pos(tile, (i % 2) * 393, (i / 2) * 181);
-    lv_obj_set_style_pad_all(tile, 18, 0);
+// A tile inside a section (Office, Controls) that opens one of the shared
+// pages; Back returns to the section. Page::None = not built yet, no tap.
+lv_obj_t *subTile(lv_obj_t *parent, int i, const char *icon, const char *title, Page page) {
+  lv_obj_t *tile = box(parent, 383, 171);
+  lv_obj_set_pos(tile, (i % 2) * 393, (i / 2) * 181);
+  lv_obj_set_style_pad_all(tile, 18, 0);
+  if (page != Page::None) {
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(tile, lv_color_hex(0x1E1E22), LV_STATE_PRESSED);
     lv_obj_add_event_cb(tile, [](lv_event_t *e) { openControls((Page)(intptr_t)lv_event_get_user_data(e)); },
-                        LV_EVENT_CLICKED, (void *)(intptr_t)pages[i]);
-    text(tile, &lv_font_montserrat_24, kAccent, icons[i]);
-    lv_obj_align(text(tile, &lv_font_montserrat_28, kText, titles[i]), LV_ALIGN_TOP_LEFT, 44, -2);
-    controlTileStatus[i] = text(tile, &lv_font_montserrat_16, kMuted, "");
-    lv_obj_set_width(controlTileStatus[i], 340);
-    lv_label_set_long_mode(controlTileStatus[i], LV_LABEL_LONG_DOT);
-    lv_obj_align(controlTileStatus[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
+                        LV_EVENT_CLICKED, (void *)(intptr_t)page);
   }
+  text(tile, &lv_font_montserrat_24, page != Page::None ? kAccent : kMuted, icon);
+  lv_obj_align(text(tile, &lv_font_montserrat_28, page != Page::None ? kText : kMuted, title), LV_ALIGN_TOP_LEFT, 44, -2);
+  lv_obj_t *status = text(tile, &lv_font_montserrat_16, kMuted, "");
+  lv_obj_set_width(status, 340);
+  lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
+  lv_obj_align(status, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  return status;
+}
+
+// Office: the room's devices. PC now; TV next; lights, heater, fan later.
+void buildOffice(lv_obj_t *tab) {
+  lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
+  officeTileStatus[0] = subTile(tab, 0, LV_SYMBOL_POWER, "PC", Page::Pc);
+  officeTileStatus[1] = subTile(tab, 1, LV_SYMBOL_VIDEO, "TV", Page::None);
+}
+
+// Controls: Arc, restarts and the panel itself.
+void buildControls(lv_obj_t *tab) {
+  lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
+  controlTileStatus[0] = subTile(tab, 0, LV_SYMBOL_BELL, "Arc", Page::ArcTools);
+  controlTileStatus[1] = subTile(tab, 1, LV_SYMBOL_REFRESH, "Restarts", Page::Restarts);
+  controlTileStatus[2] = subTile(tab, 2, LV_SYMBOL_SETTINGS, "Panel", Page::PanelSettings);
 }
 
 lv_obj_t *homeLayer;
@@ -1306,7 +1317,7 @@ void showSection(int section) {
     else lv_obj_add_flag(sectionLayers[i], LV_OBJ_FLAG_HIDDEN);
   }
   currentSection = section;
-  if (section == kProxmox) {
+  if (section == kHomelab) {
     if (!proxmoxHave) proxmoxMessage("Loading...");
     fetchProxmox();
   }
@@ -1332,27 +1343,42 @@ lv_obj_t *buildSection(int section, const char *title) {
   return body;
 }
 
+// Home screen grid. kHomeColumns = 3 gives a 3x2 of large tiles; 4 gives a
+// 4x2 with room for two more sections (the spare slots show as faint
+// outlines until something fills them).
+constexpr int kHomeColumns = 3;
+
 void buildHome() {
   homeLayer = bare(mainScreen);
   lv_obj_set_size(homeLayer, board::kWidth, board::kHeight - kTopBar);
   lv_obj_set_pos(homeLayer, 0, kTopBar);
-  const char *titles[kSectionCount] = {"Overview", "Homelab", "Proxmox", "Network", "Minecraft", "Controls"};
-  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_LIST, LV_SYMBOL_DRIVE,
+  const char *titles[kSectionCount] = {"Overview", "Homelab", "Office", "Network", "Minecraft", "Controls"};
+  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_DRIVE, LV_SYMBOL_HOME,
                                       LV_SYMBOL_WIFI, LV_SYMBOL_IMAGE, LV_SYMBOL_SETTINGS};
-  for (int i = 0; i < kSectionCount; i++) {
-    lv_obj_t *tile = box(homeLayer, 248, 196);
-    lv_obj_set_pos(tile, 16 + (i % 3) * 260, 12 + (i / 3) * 208);
-    lv_obj_set_style_pad_all(tile, 18, 0);
+  constexpr int gap = 12, margin = 16;
+  constexpr int w = (800 - 2 * margin - (kHomeColumns - 1) * gap) / kHomeColumns, h = 196;
+  const lv_font_t *titleFont = kHomeColumns > 3 ? &lv_font_montserrat_24 : &lv_font_montserrat_28;
+  for (int i = 0; i < kHomeColumns * 2; i++) {
+    int x = margin + (i % kHomeColumns) * (w + gap), y = 12 + (i / kHomeColumns) * (h + gap);
+    if (i >= kSectionCount) {  // a spare slot
+      lv_obj_t *spare = box(homeLayer, w, h, kBg);
+      lv_obj_set_pos(spare, x, y);
+      lv_obj_set_style_border_color(spare, lv_color_hex(0x1C1C20), 0);
+      continue;
+    }
+    lv_obj_t *tile = box(homeLayer, w, h);
+    lv_obj_set_pos(tile, x, y);
+    lv_obj_set_style_pad_all(tile, kHomeColumns > 3 ? 14 : 18, 0);
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(tile, lv_color_hex(0x1E1E22), LV_STATE_PRESSED);
     lv_obj_add_event_cb(tile, [](lv_event_t *e) { showSection((int)(intptr_t)lv_event_get_user_data(e)); },
                         LV_EVENT_CLICKED, (void *)(intptr_t)i);
     text(tile, &lv_font_montserrat_28, kAccent, icons[i]);
-    lv_obj_t *t = text(tile, &lv_font_montserrat_28, kText, titles[i]);
+    lv_obj_t *t = text(tile, titleFont, kText, titles[i]);
     lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 54);
     tileStatus[i] = text(tile, &lv_font_montserrat_16, kMuted, "");
-    lv_obj_set_width(tileStatus[i], 210);
-    lv_label_set_long_mode(tileStatus[i], LV_LABEL_LONG_DOT);
+    lv_obj_set_width(tileStatus[i], w - (kHomeColumns > 3 ? 28 : 36));
+    lv_label_set_long_mode(tileStatus[i], LV_LABEL_LONG_WRAP);  // two lines fit on narrow tiles
     lv_obj_align(tileStatus[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
     tiles[i] = tile;
   }
@@ -1366,10 +1392,15 @@ void buildMain() {
   buildHome();
 
   buildOverview(buildSection(kOverview, "Overview"));
-  lv_obj_t *homelabBody = buildSection(kHomelab, "Homelab");
+  homelabBody = buildSection(kHomelab, "Homelab");
   lv_obj_add_flag(homelabBody, LV_OBJ_FLAG_SCROLLABLE);
+  column(homelabBody, 12);
+  proxmoxBody = bare(homelabBody);  // hosts and guests up top...
+  lv_obj_set_size(proxmoxBody, 776, LV_SIZE_CONTENT);
+  column(proxmoxBody, 10);
+  text(homelabBody, &lv_font_montserrat_16, kMuted, "Health checks");  // ...every check below
   buildHomelab(homelabBody);
-  proxmoxBody = buildSection(kProxmox, "Proxmox");
+  buildOffice(buildSection(kOffice, "Office"));
   buildNetwork(buildSection(kNetwork, "Network"));
   buildMinecraft(buildSection(kMinecraft, "Minecraft"));
   lv_obj_t *controlsBody = buildSection(kControls, "Controls");
@@ -1585,9 +1616,9 @@ void setTile(int section, const String &status, uint32_t color, uint32_t border 
   setBorder(tiles[section], border, border == kBorder ? 1 : 2);
 }
 
-void setControlTile(int i, const String &status, uint32_t color) {
-  setText(controlTileStatus[i], status.c_str());
-  setTextColor(controlTileStatus[i], color);
+void setSubTile(lv_obj_t *status, const String &value, uint32_t color) {
+  setText(status, value.c_str());
+  setTextColor(status, color);
 }
 
 // Each home tile's one-line status, so the home screen is glanceable too.
@@ -1600,21 +1631,17 @@ void applyTiles() {
     setTile(kOverview, fresh ? n : n + ", acknowledged", fresh ? kAlert : kWarn, fresh ? kAlert : kWarn);
   }
 
+  // Homelab covers Proxmox and every health check (the checks list includes
+  // the Proxmox signals), from the live state — never a stale page load.
   int ok = 0;
   for (const auto &h : snap->homelab) ok += h.ok;
-  int total = snap->homelab.size();
-  setTile(kHomelab, String(ok) + " of " + String(total) + " checks ok", ok == total ? kOk : kAlert,
-          ok == total ? kBorder : kAlert);
+  int total = snap->homelab.size(), bad = total - ok;
+  if (bad) setTile(kHomelab, String(bad) + (bad == 1 ? " problem" : " problems"), kAlert, kAlert);
+  else if (snap->pxHosts) setTile(kHomelab, String(snap->pxHostsUp) + " hosts, all " + String(total) + " checks ok", kOk);
+  else setTile(kHomelab, "All " + String(total) + " checks ok", kOk);
 
-  // From the live summary in every state update — never the Proxmox
-  // section's last load, which could be minutes old (found live).
-  if (!snap->proxmoxConfigured) setTile(kProxmox, "Needs a token", kWarn);
-  else if (!snap->pxHosts) setTile(kProxmox, "Checking...", kMuted);
-  else if (snap->pxProblems)
-    setTile(kProxmox, String(snap->pxProblems) + (snap->pxProblems == 1 ? " problem" : " problems"), kAlert, kAlert);
-  else
-    setTile(kProxmox, String(snap->pxHostsUp) + "/" + String(snap->pxHosts) + " hosts, " + String(snap->pxGuestsRunning) + "/" +
-                          String(snap->pxGuests) + " running", kOk);
+  setTile(kOffice, !snap->pcConfigured ? String("PC not set up") : snap->pcOnline ? String("PC is on") : String("PC is off"),
+          snap->pcOnline ? kOk : kMuted);
 
   if (!snap->netReady) setTile(kNetwork, "Waiting for UniFi", kMuted);
   else if (!snap->netOnline) setTile(kNetwork, "Internet down", kAlert, kAlert);
@@ -1624,21 +1651,21 @@ void applyTiles() {
   else if (!snap->mcUp) setTile(kMinecraft, "Offline", kAlert, kAlert);
   else setTile(kMinecraft, snap->mcOnline ? "Online, " + String(snap->mcOnline) + " playing" : String("Online, nobody on"), kOk);
 
-  // Controls' own four tiles.
-  if (!snap->pcConfigured) setControlTile(0, "Not set up", kMuted);
-  else setControlTile(0, snap->pcOnline ? "On" : "Off", snap->pcOnline ? kOk : kMuted);
+  // Office's and Controls' own tiles.
+  if (!snap->pcConfigured) setSubTile(officeTileStatus[0], "Not set up", kMuted);
+  else setSubTile(officeTileStatus[0], snap->pcOnline ? "On" : "Off", snap->pcOnline ? kOk : kMuted);
+  setSubTile(officeTileStatus[1], "Coming soon", kMuted);
   if (snap->quietSeconds > 0)
-    setControlTile(1, "Quiet: " + String((snap->quietSeconds + 59) / 60) + "m left", kWarn);
-  else if (snap->unacked > 0) setControlTile(1, String(snap->unacked) + " to acknowledge", kAlert);
-  else setControlTile(1, "Check, acknowledge, quiet, brief", kMuted);
+    setSubTile(controlTileStatus[0], "Quiet: " + String((snap->quietSeconds + 59) / 60) + "m left", kWarn);
+  else if (snap->unacked > 0) setSubTile(controlTileStatus[0], String(snap->unacked) + " to acknowledge", kAlert);
+  else setSubTile(controlTileStatus[0], "Check, acknowledge, quiet, brief", kMuted);
   int restarts = 0;
   for (const auto &a : snap->actions) restarts += a.group == "Restart";
-  setControlTile(2, String(restarts) + " services", kMuted);
-  setControlTile(3, "Wi-Fi " + net::wifiSsid(), kMuted);
+  setSubTile(controlTileStatus[1], String(restarts) + " services", kMuted);
+  setSubTile(controlTileStatus[2], "Wi-Fi " + net::wifiSsid(), kMuted);
 
-  if (snap->quietSeconds > 0) setTile(kControls, "Quiet mode on", kWarn);
-  else if (snap->pcConfigured) setTile(kControls, snap->pcOnline ? "PC is on" : "PC is off", snap->pcOnline ? kOk : kMuted);
-  else setTile(kControls, "Restarts and tools", kMuted);
+  setTile(kControls, snap->quietSeconds > 0 ? String("Quiet mode on") : String("Arc, restarts, panel"),
+          snap->quietSeconds > 0 ? kWarn : kMuted);
 }
 
 void setPill(const String &label, uint32_t bg, uint32_t fg) {
@@ -1737,7 +1764,7 @@ void update() {
   }
 
   handleDetail();
-  if (currentSection == kProxmox && millis() - proxmoxFetchedAt > kProxmoxRefreshMs) fetchProxmox();
+  if (currentSection == kHomelab && millis() - proxmoxFetchedAt > kProxmoxRefreshMs) fetchProxmox();
   // Left alone for a while: drift back to the home tiles (unless an alert is showing).
   if (currentSection != kHome && lv_display_get_inactive_time(nullptr) > kHomeAfterMs &&
       !(snap && snap->unacked > 0 && currentSection == kOverview))
