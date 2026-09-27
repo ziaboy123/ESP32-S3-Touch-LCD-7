@@ -28,6 +28,10 @@ a full-screen section with a Back button:
   (stats, leaderboard, full **inventories with real item icons**, armour,
   offhand, ender chest, custom names and enchantments) and **World**
   (in-game time, weather, game-rule switches, disk usage).
+- **Office** — the room's devices: the **PC** (on/off state, Wake-on-LAN,
+  a confirm-first shut down and desk/sim display modes) and a **TV
+  remote** (power over HDMI-CEC, volume, d-pad, home, back, play/pause),
+  all performed by the backend.
 - **Controls** — four tiles of its own: **PC** (on/off state, Wake-on-LAN,
   a confirm-first shut down, and desk/sim display modes, all performed by the backend), **Arc** (check
   now, acknowledge, quiet mode, briefing), **Restarts** (confirm-first

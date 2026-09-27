@@ -64,6 +64,7 @@ lv_obj_t *mcState, *mcPlayers, *mcTps, *mcButtons, *mcLogList;
 lv_obj_t *quietLabel = nullptr;
 lv_obj_t *wakeButton = nullptr, *wakeLabel = nullptr;  // Wake PC, relabelled with the PC's state
 lv_obj_t *pcStateLabel = nullptr, *pcHint = nullptr;
+lv_obj_t *tvStateLabel = nullptr, *tvAppLabel = nullptr;
 lv_obj_t *controlTileStatus[3], *officeTileStatus[2];
 
 lv_obj_t *toast;
@@ -180,9 +181,14 @@ void showToast(const String &message, uint32_t color) {
 
 // --- Actions -----------------------------------------------------------------
 
+String lastActionId;
+
 void run(const String &id, const String &label) {
   net::runAction(id);
-  showToast(label + "...", kMuted);
+  lastActionId = id;
+  // TV remote keys are pressed in quick succession; a toast per press is
+  // noise. They only toast if one fails.
+  if (!id.startsWith("tv:")) showToast(label + "...", kMuted);
 }
 
 void confirmThen(const String &id, const String &label) {
@@ -326,7 +332,7 @@ void showWifiSetup() {
 // with Back. Data comes from Arc (which reads it through Beacon), fetched
 // only while a page is open.
 
-enum class Page { None, Players, World, Inventory, Pc, ArcTools, Restarts, PanelSettings };
+enum class Page { None, Players, World, Inventory, Pc, Tv, ArcTools, Restarts, PanelSettings };
 Page openPage = Page::None;
 lv_obj_t *pageLayer, *pageTitle, *pageBody;
 uint32_t pageFetchedAt = 0;
@@ -997,6 +1003,7 @@ void fetchProxmox() {
 // in the same full-screen page layer as the Minecraft sub-pages.
 
 void applyPc();
+void applyTv();
 void applyQuiet();
 
 lv_obj_t *actionGrid(const char *group, int w, int h) {
@@ -1050,6 +1057,52 @@ void renderControlsPage(Page page) {
     }
     if (!shown) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "PC controls aren't set up."), 400, 20);
     applyPc();
+  } else if (page == Page::Tv) {
+    // A remote: power and volume on the left under the TV's state, d-pad
+    // and Home / Back / Play-Pause on the right. Keys go through the Fire TV
+    // Stick; power reaches the TV itself over HDMI-CEC.
+    lv_obj_t *card = box(pageBody, 300, 352);
+    lv_obj_set_style_pad_all(card, 16, 0);
+    text(card, &lv_font_montserrat_14, kMuted, "Office TV (via Fire TV)");
+    track(text(card, &lv_font_montserrat_36, kText, "-"), &tvStateLabel);
+    lv_obj_align(tvStateLabel, LV_ALIGN_TOP_LEFT, 0, 22);
+    track(text(card, &lv_font_montserrat_16, kMuted, ""), &tvAppLabel);
+    lv_obj_set_width(tvAppLabel, 268);
+    lv_label_set_long_mode(tvAppLabel, LV_LABEL_LONG_DOT);
+    lv_obj_align(tvAppLabel, LV_ALIGN_TOP_LEFT, 0, 70);
+
+    struct Key { const char *id, *label; lv_obj_t *parent; int x, y, w, h; };
+    const int padX = 312 + (464 - 346) / 2;
+    const Key keys[] = {
+        {"tv:on", LV_SYMBOL_POWER " On", card, 0, 180, 130, 64},
+        {"tv:off", LV_SYMBOL_POWER " Off", card, 138, 180, 130, 64},
+        {"tv:vol-down", LV_SYMBOL_MINUS, card, 0, 252, 84, 64},
+        {"tv:mute", LV_SYMBOL_MUTE, card, 92, 252, 84, 64},
+        {"tv:vol-up", LV_SYMBOL_PLUS, card, 184, 252, 84, 64},
+        {"tv:up", LV_SYMBOL_UP, pageBody, padX + 118, 0, 110, 82},
+        {"tv:left", LV_SYMBOL_LEFT, pageBody, padX, 90, 110, 82},
+        {"tv:ok", "OK", pageBody, padX + 118, 90, 110, 82},
+        {"tv:right", LV_SYMBOL_RIGHT, pageBody, padX + 236, 90, 110, 82},
+        {"tv:down", LV_SYMBOL_DOWN, pageBody, padX + 118, 180, 110, 82},
+        {"tv:home", LV_SYMBOL_HOME " Home", pageBody, 312, 284, 150, 68},
+        {"tv:back", LV_SYMBOL_BACKSPACE " Back", pageBody, 469, 284, 150, 68},
+        {"tv:playpause", LV_SYMBOL_PLAY " " LV_SYMBOL_PAUSE, pageBody, 626, 284, 150, 68},
+    };
+    int shown = 0;
+    for (const Key &k : keys) {
+      for (const auto &a : snap->actions) {
+        if (a.id != k.id) continue;
+        lv_obj_t *b = actionButton(k.parent, a, k.w, k.h);
+        lv_obj_set_pos(b, k.x, k.y);
+        lv_obj_t *label = lv_obj_get_child(b, 0);
+        lv_label_set_text(label, k.label);  // symbols live here; the backend's labels are ASCII-only
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
+        lv_obj_center(label);
+        shown++;
+      }
+    }
+    if (!shown) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "TV controls aren't set up."), 330, 20);
+    applyTv();
   } else if (page == Page::ArcTools) {
     actionGrid("Arc", 382, 110);
     applyQuiet();
@@ -1075,7 +1128,11 @@ void renderControlsPage(Page page) {
 }
 
 void openControls(Page page) {
-  const char *title = page == Page::Pc ? "PC" : page == Page::ArcTools ? "Arc" : page == Page::Restarts ? "Restarts" : "Panel";
+  const char *title = page == Page::Pc         ? "PC"
+                      : page == Page::Tv       ? "TV"
+                      : page == Page::ArcTools ? "Arc"
+                      : page == Page::Restarts ? "Restarts"
+                                               : "Panel";
   showPage(page, title);
   renderControlsPage(page);
 }
@@ -1285,7 +1342,7 @@ lv_obj_t *subTile(lv_obj_t *parent, int i, const char *icon, const char *title, 
 void buildOffice(lv_obj_t *tab) {
   lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
   officeTileStatus[0] = subTile(tab, 0, LV_SYMBOL_POWER, "PC", Page::Pc);
-  officeTileStatus[1] = subTile(tab, 1, LV_SYMBOL_VIDEO, "TV", Page::None);
+  officeTileStatus[1] = subTile(tab, 1, LV_SYMBOL_VIDEO, "TV", Page::Tv);
 }
 
 // Controls: Arc, restarts and the panel itself.
@@ -1602,6 +1659,16 @@ void applyPc() {
   if (wakeLabel) setText(wakeLabel, LV_SYMBOL_POWER " Wake PC");
 }
 
+// The TV page's state line: off / idle / playing, and the app in front.
+void applyTv() {
+  if (!tvStateLabel) return;
+  String state = snap->tvState;
+  if (state.length()) state.setCharAt(0, toupper(state[0]));
+  setText(tvStateLabel, snap->tvConfigured ? state.c_str() : "Not set up");
+  setTextColor(tvStateLabel, snap->tvState == "off" || !snap->tvConfigured ? kMuted : kOk);
+  setText(tvAppLabel, snap->tvApp.c_str());
+}
+
 void applyQuiet() {
   if (!quietLabel) return;
   if (snap->quietSeconds > 0) lv_label_set_text_fmt(quietLabel, "Quiet: %dm left", (snap->quietSeconds + 59) / 60);
@@ -1640,8 +1707,11 @@ void applyTiles() {
   else if (snap->pxHosts) setTile(kHomelab, String(snap->pxHostsUp) + " hosts, all " + String(total) + " checks ok", kOk);
   else setTile(kHomelab, "All " + String(total) + " checks ok", kOk);
 
-  setTile(kOffice, !snap->pcConfigured ? String("PC not set up") : snap->pcOnline ? String("PC is on") : String("PC is off"),
-          snap->pcOnline ? kOk : kMuted);
+  {
+    String office = !snap->pcConfigured ? String("PC -") : snap->pcOnline ? String("PC on") : String("PC off");
+    if (snap->tvConfigured) office += String(", TV ") + snap->tvState;
+    setTile(kOffice, office, snap->pcOnline || (snap->tvConfigured && snap->tvState != "off") ? kOk : kMuted);
+  }
 
   if (!snap->netReady) setTile(kNetwork, "Waiting for UniFi", kMuted);
   else if (!snap->netOnline) setTile(kNetwork, "Internet down", kAlert, kAlert);
@@ -1654,7 +1724,12 @@ void applyTiles() {
   // Office's and Controls' own tiles.
   if (!snap->pcConfigured) setSubTile(officeTileStatus[0], "Not set up", kMuted);
   else setSubTile(officeTileStatus[0], snap->pcOnline ? "On" : "Off", snap->pcOnline ? kOk : kMuted);
-  setSubTile(officeTileStatus[1], "Coming soon", kMuted);
+  if (!snap->tvConfigured) setSubTile(officeTileStatus[1], "Not set up", kMuted);
+  else {
+    String tv = snap->tvState;
+    if (tv.length()) tv.setCharAt(0, toupper(tv[0]));
+    setSubTile(officeTileStatus[1], snap->tvApp.length() ? tv + ", " + snap->tvApp : tv, tv == "Off" ? kMuted : kOk);
+  }
   if (snap->quietSeconds > 0)
     setSubTile(controlTileStatus[0], "Quiet: " + String((snap->quietSeconds + 59) / 60) + "m left", kWarn);
   else if (snap->unacked > 0) setSubTile(controlTileStatus[0], String(snap->unacked) + " to acknowledge", kAlert);
@@ -1747,6 +1822,7 @@ void update() {
       applyActions();
       applyQuiet();
       applyPc();
+      applyTv();
       applyNetwork();
       applyTiles();
       // A new alert while nobody's using the panel: show it, don't wait to be asked.
@@ -1759,7 +1835,8 @@ void update() {
   String message;
   bool ok;
   if (net::takeResult(message, ok)) {
-    showToast(message.length() ? message : String(ok ? "Done" : "Failed"), ok ? kOk : kAlert);
+    if (!ok || !lastActionId.startsWith("tv:"))
+      showToast(message.length() ? message : String(ok ? "Done" : "Failed"), ok ? kOk : kAlert);
     if (openPage == Page::World) net::fetchDetail("/panel/minecraft/world");  // show the rule as it really is now
   }
 

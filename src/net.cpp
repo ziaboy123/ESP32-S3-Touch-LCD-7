@@ -83,6 +83,9 @@ std::shared_ptr<Snapshot> parse(JsonDocument &doc) {
   s->proxmoxConfigured = doc["proxmox"] | false;
   s->pcConfigured = doc["pc"]["configured"] | false;
   s->pcOnline = doc["pc"]["online"] | false;
+  s->tvConfigured = doc["tv"]["configured"] | false;
+  s->tvState = doc["tv"]["state"] | "";
+  s->tvApp = doc["tv"]["app"] | "";
   JsonObject px = doc["proxmox_summary"];
   s->pxHostsUp = px["hosts_up"] | 0;
   s->pxHosts = px["hosts"] | 0;
