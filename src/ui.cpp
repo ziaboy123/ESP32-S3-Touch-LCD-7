@@ -1555,7 +1555,7 @@ void applyPc() {
   if (pcStateLabel) {
     setText(pcStateLabel, !snap->pcConfigured ? "-" : snap->pcOnline ? "On" : "Off");
     setTextColor(pcStateLabel, snap->pcOnline ? kOk : kMuted);
-    setText(pcHint, snap->pcOnline ? "Shut down gives a 60-second warning on the PC; cancel it there with "
+    setText(pcHint, snap->pcOnline ? "Shut down gives a 10-second warning on the PC; cancel it there with "
                                      "shutdown /a."
                                    : "Wake starts it over the network; it takes about half a minute to boot.");
   }
