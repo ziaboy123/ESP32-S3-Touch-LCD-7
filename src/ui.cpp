@@ -1548,8 +1548,8 @@ void applyActions() {
 
 }
 
-// "PC is on" (green, not pressable) while the network sees it; "Wake PC"
-// once it's gone. UniFi takes a few minutes to drop a switched-off PC.
+// The PC page's On/Off, as the network sees it (UniFi takes a few minutes
+// to drop a switched-off PC).
 void applyPc() {
   if (pcStateLabel) {
     setText(pcStateLabel, !snap->pcConfigured ? "-" : snap->pcOnline ? "On" : "Off");
@@ -1558,16 +1558,10 @@ void applyPc() {
                                    : "Wake-on-LAN starts it over the network; it takes about half a minute "
                                      "to boot. After a shutdown it shows as off within a few minutes.");
   }
-  if (!wakeButton) return;
-  if (snap->pcOnline) {
-    setText(wakeLabel, LV_SYMBOL_OK " PC is on");
-    setTextColor(wakeLabel, kOk);
-    lv_obj_add_state(wakeButton, LV_STATE_DISABLED);
-  } else {
-    setText(wakeLabel, LV_SYMBOL_POWER " Wake PC");
-    setTextColor(wakeLabel, kText);
-    lv_obj_remove_state(wakeButton, LV_STATE_DISABLED);
-  }
+  // The button always works: UniFi takes a few minutes to notice a shutdown,
+  // so disabling it while the PC "looks on" would lock you out right after
+  // turning it off, and waking a PC that's already on is harmless.
+  if (wakeLabel) setText(wakeLabel, LV_SYMBOL_POWER " Wake PC");
 }
 
 void applyQuiet() {
