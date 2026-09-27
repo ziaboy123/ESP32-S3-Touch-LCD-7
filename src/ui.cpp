@@ -1033,18 +1033,24 @@ void renderControlsPage(Page page) {
     lv_obj_set_width(pcHint, 336);
     lv_label_set_long_mode(pcHint, LV_LABEL_LONG_WRAP);
     lv_obj_align(pcHint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    // Wake on top, Shut down (confirm-first) below — whichever the backend offers.
-    int y = 0;
-    for (const char *id : {"office:wake-pc", "office:shutdown-pc"}) {
+    // Right column: Wake, Shut down (confirm-first), then the two display
+    // modes side by side — whichever the backend offers.
+    struct Slot { const char *id; int x, y, w; };
+    const Slot slots[] = {{"office:wake-pc", 392, 0, 384},
+                          {"office:shutdown-pc", 392, 121, 384},
+                          {"office:display-desk", 392, 242, 186},
+                          {"office:display-sim", 590, 242, 186}};
+    int shown = 0;
+    for (const Slot &slot : slots) {
       for (const auto &a : snap->actions) {
-        if (a.id != id) continue;
-        lv_obj_t *b = actionButton(pageBody, a, 384, 171);
-        lv_obj_set_pos(b, 392, y);
-        lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_28, 0);
-        y += 181;
+        if (a.id != slot.id) continue;
+        lv_obj_t *b = actionButton(pageBody, a, slot.w, 110);
+        lv_obj_set_pos(b, slot.x, slot.y);
+        lv_obj_set_style_text_font(lv_obj_get_child(b, 0), slot.w > 200 ? &lv_font_montserrat_28 : &lv_font_montserrat_24, 0);
+        shown++;
       }
     }
-    if (!y) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "PC controls aren't set up."), 400, 20);
+    if (!shown) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "PC controls aren't set up."), 400, 20);
     applyPc();
   } else if (page == Page::ArcTools) {
     actionGrid("Arc", 382, 110);

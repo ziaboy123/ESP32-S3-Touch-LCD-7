@@ -29,7 +29,7 @@ a full-screen section with a Back button:
   offhand, ender chest, custom names and enchantments) and **World**
   (in-game time, weather, game-rule switches, disk usage).
 - **Controls** — four tiles of its own: **PC** (on/off state, Wake-on-LAN,
-  and a confirm-first shut down that the backend performs), **Arc** (check
+  a confirm-first shut down, and desk/sim display modes, all performed by the backend), **Arc** (check
   now, acknowledge, quiet mode, briefing), **Restarts** (confirm-first
   service restarts) and **Panel** (Wi-Fi setup, screen off, firmware and
   address).
