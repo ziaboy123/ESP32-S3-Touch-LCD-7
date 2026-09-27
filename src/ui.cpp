@@ -1033,16 +1033,18 @@ void renderControlsPage(Page page) {
     lv_obj_set_width(pcHint, 336);
     lv_label_set_long_mode(pcHint, LV_LABEL_LONG_WRAP);
     lv_obj_align(pcHint, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    const PanelAction *wake = nullptr;
-    for (const auto &a : snap->actions)
-      if (a.id == "office:wake-pc") wake = &a;
-    if (wake) {
-      lv_obj_t *b = actionButton(pageBody, *wake, 384, 352);
-      lv_obj_set_pos(b, 392, 0);
-      lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_36, 0);
-    } else {
-      lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "Wake-on-LAN isn't set up."), 400, 20);
+    // Wake on top, Shut down (confirm-first) below — whichever the backend offers.
+    int y = 0;
+    for (const char *id : {"office:wake-pc", "office:shutdown-pc"}) {
+      for (const auto &a : snap->actions) {
+        if (a.id != id) continue;
+        lv_obj_t *b = actionButton(pageBody, a, 384, 171);
+        lv_obj_set_pos(b, 392, y);
+        lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_28, 0);
+        y += 181;
+      }
     }
+    if (!y) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "PC controls aren't set up."), 400, 20);
     applyPc();
   } else if (page == Page::ArcTools) {
     actionGrid("Arc", 382, 110);
@@ -1548,15 +1550,14 @@ void applyActions() {
 
 }
 
-// The PC page's On/Off, as the network sees it (UniFi takes a few minutes
-// to drop a switched-off PC).
+// The PC page's On/Off, from the backend's ~20s check.
 void applyPc() {
   if (pcStateLabel) {
     setText(pcStateLabel, !snap->pcConfigured ? "-" : snap->pcOnline ? "On" : "Off");
     setTextColor(pcStateLabel, snap->pcOnline ? kOk : kMuted);
-    setText(pcHint, snap->pcOnline ? "It's on the network. Shut it down from Windows as usual."
-                                   : "Wake-on-LAN starts it over the network; it takes about half a minute "
-                                     "to boot. After a shutdown it shows as off within a few minutes.");
+    setText(pcHint, snap->pcOnline ? "Shut down gives a 60-second warning on the PC; cancel it there with "
+                                     "shutdown /a."
+                                   : "Wake starts it over the network; it takes about half a minute to boot.");
   }
   // The button always works: UniFi takes a few minutes to notice a shutdown,
   // so disabling it while the PC "looks on" would lock you out right after

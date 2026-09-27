@@ -28,12 +28,16 @@ a full-screen section with a Back button:
   (stats, leaderboard, full **inventories with real item icons**, armour,
   offhand, ender chest, custom names and enchantments) and **World**
   (in-game time, weather, game-rule switches, disk usage).
-- **Controls** — restart buttons, quiet mode, "check now", Wi-Fi setup,
-  screen off.
+- **Controls** — four tiles of its own: **PC** (on/off state, Wake-on-LAN,
+  and a confirm-first shut down that the backend performs), **Arc** (check
+  now, acknowledge, quiet mode, briefing), **Restarts** (confirm-first
+  service restarts) and **Panel** (Wi-Fi setup, screen off, firmware and
+  address).
 
 It drifts back to the home screen after a few minutes untouched, jumps to
-Overview when a new alert arrives, and a touch on a dark screen only wakes
-it (it never also presses whatever was under your finger).
+Overview when a new alert arrives, and stays lit (it's on USB power) unless
+turned off from Controls — then a touch only wakes it, never also pressing
+whatever was under your finger.
 
 ## Layout
 
