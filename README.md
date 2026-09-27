@@ -17,10 +17,10 @@ a full-screen section with a Back button:
 
 - **Overview** — one big status card (green / red / amber once
   acknowledged, tap to acknowledge) plus a live activity feed.
-- **Homelab** — every health check: services, disk, certificates, and
-  outside-in checks of the public sites.
-- **Proxmox** — a card per host (CPU / RAM / disk bars, uptime) and every
-  container and VM with its status and usage.
+- **Homelab** — Proxmox at the top (a card per host with CPU / RAM / disk
+  bars and uptime, then every container and VM with its status and usage),
+  and every health check below as you scroll: services, disk,
+  certificates, and outside-in checks of the public sites.
 - **Network** — internet status, latency, live download/upload with a
   30-minute graph, and the busiest devices right now.
 - **Minecraft** — server status, TPS, a live server log that scrolls
@@ -32,11 +32,9 @@ a full-screen section with a Back button:
   a confirm-first shut down and desk/sim display modes) and a **TV
   remote** (power over HDMI-CEC, volume, d-pad, home, back, play/pause),
   all performed by the backend.
-- **Controls** — four tiles of its own: **PC** (on/off state, Wake-on-LAN,
-  a confirm-first shut down, and desk/sim display modes, all performed by the backend), **Arc** (check
-  now, acknowledge, quiet mode, briefing), **Restarts** (confirm-first
-  service restarts) and **Panel** (Wi-Fi setup, screen off, firmware and
-  address).
+- **Controls** — **Arc** (check now, acknowledge, quiet mode, briefing),
+  **Restarts** (confirm-first service restarts) and **Panel** (Wi-Fi setup,
+  screen off, firmware and address).
 
 It drifts back to the home screen after a few minutes untouched, jumps to
 Overview when a new alert arrives, and stays lit (it's on USB power) unless
