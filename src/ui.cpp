@@ -43,7 +43,7 @@ constexpr uint32_t kHomeAfterMs = 3 * 60 * 1000;  // untouched this long: drift 
 constexpr uint32_t kProxmoxRefreshMs = 15000;
 
 // The home screen's tiles, each opening one full-screen section.
-enum Section { kOverview, kHomelab, kOffice, kNetwork, kMinecraft, kGithub, kControls, kSectionCount };
+enum Section { kOverview, kHomelab, kGithub, kOffice, kNetwork, kMinecraft, kRacing, kControls, kSectionCount };
 constexpr int kHome = -1;
 int currentSection = kHome;
 bool screenOffByHand = false;  // Screen off button pressed; see applyBacklight()
@@ -1546,9 +1546,10 @@ void buildHome() {
   homeLayer = bare(mainScreen);
   lv_obj_set_size(homeLayer, board::kWidth, board::kHeight - kTopBar);
   lv_obj_set_pos(homeLayer, 0, kTopBar);
-  const char *titles[kSectionCount] = {"Overview", "Homelab", "Office", "Network", "Minecraft", "GitHub", "Controls"};
-  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_DRIVE, LV_SYMBOL_HOME, LV_SYMBOL_WIFI,
-                                      LV_SYMBOL_IMAGE, LV_SYMBOL_SHUFFLE, LV_SYMBOL_SETTINGS};
+  const char *titles[kSectionCount] = {"Overview", "Homelab", "GitHub", "Office",
+                                       "Network", "Minecraft", "Racing", "Controls"};
+  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_DRIVE, LV_SYMBOL_SHUFFLE, LV_SYMBOL_HOME,
+                                      LV_SYMBOL_WIFI, LV_SYMBOL_IMAGE, LV_SYMBOL_CHARGE, LV_SYMBOL_SETTINGS};
   constexpr int gap = 12, margin = 16;
   constexpr int w = (800 - 2 * margin - (kHomeColumns - 1) * gap) / kHomeColumns, h = 196;
   const lv_font_t *titleFont = kHomeColumns > 3 ? &lv_font_montserrat_24 : &lv_font_montserrat_28;
@@ -1601,6 +1602,8 @@ void buildMain() {
   lv_obj_add_flag(controlsBody, LV_OBJ_FLAG_SCROLLABLE);
   buildControls(controlsBody);
   githubBody = buildSection(kGithub, "GitHub");
+  // Racing: the Assetto Corsa companion screen and lap records, next up.
+  lv_obj_center(text(buildSection(kRacing, "Racing"), &lv_font_montserrat_20, kMuted, "Coming soon."));
 
   buildPageLayer();
 
@@ -1869,6 +1872,8 @@ void applyTiles() {
   if (!snap->netReady) setTile(kNetwork, "Waiting for UniFi", kMuted);
   else if (!snap->netOnline) setTile(kNetwork, "Internet down", kAlert, kAlert);
   else setTile(kNetwork, String(snap->netLatency) + " ms, " + String(snap->netDeviceCount) + " devices", kOk);
+
+  setTile(kRacing, "Coming soon", kMuted);
 
   if (!snap->ghConfigured) setTile(kGithub, "Needs a token", kWarn);
   else setTile(kGithub, String(snap->ghStreak) + "-day streak, " + String(snap->ghToday) + " today",
