@@ -1,0 +1,20 @@
+// Home and section icons, as UTF-8 strings for the icons_28 font
+// (src/icons_28.c, generated with lv_font_conv at 28px, 4bpp).
+// Font Awesome Free (fontawesome.com/license/free, icons CC BY 4.0) and
+// Material Design Icons (pictogrammers.com, Apache-2.0).
+#pragma once
+
+#include <lvgl.h>
+
+LV_FONT_DECLARE(icons_28);
+
+#define ICON_OVERVIEW "\xEF\x98\xA5"  // Font Awesome: gauge-high
+#define ICON_HOMELAB "\xEF\x88\xB3"  // Font Awesome: server
+#define ICON_GITHUB "\xEF\x82\x9B"  // Font Awesome (brands): github
+#define ICON_OFFICE "\xF3\xB0\xA0\xA1"  // Material Design Icons: floor-plan (the whole room)
+#define ICON_NETWORK "\xEF\x9B\xBF"  // Font Awesome: network-wired
+#define ICON_MINECRAFT "\xF3\xB0\x8D\xB3"  // Material Design Icons: minecraft
+#define ICON_RACING "\xF3\xB0\x9E\xAC"  // Material Design Icons: car-sports
+#define ICON_CONTROLS "\xEF\x87\x9E"  // Font Awesome: sliders
+#define ICON_PC "\xEF\x8E\x90"  // Font Awesome: desktop
+#define ICON_TV "\xEF\x89\xAC"  // Font Awesome: tv

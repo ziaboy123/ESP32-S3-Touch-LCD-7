@@ -8,6 +8,7 @@
 #include <lvgl.h>
 
 #include "board.h"
+#include "icons.h"
 #include "net.h"
 
 #include <map>
@@ -1452,7 +1453,8 @@ void buildMinecraft(lv_obj_t *tab) {
 
 // A tile inside a section (Office, Controls) that opens one of the shared
 // pages; Back returns to the section. Page::None = not built yet, no tap.
-lv_obj_t *subTile(lv_obj_t *parent, int i, const char *icon, const char *title, Page page) {
+lv_obj_t *subTile(lv_obj_t *parent, int i, const char *icon, const char *title, Page page,
+                  const lv_font_t *iconFont = &lv_font_montserrat_24) {
   lv_obj_t *tile = box(parent, 383, 171);
   lv_obj_set_pos(tile, (i % 2) * 393, (i / 2) * 181);
   lv_obj_set_style_pad_all(tile, 18, 0);
@@ -1462,8 +1464,8 @@ lv_obj_t *subTile(lv_obj_t *parent, int i, const char *icon, const char *title, 
     lv_obj_add_event_cb(tile, [](lv_event_t *e) { openControls((Page)(intptr_t)lv_event_get_user_data(e)); },
                         LV_EVENT_CLICKED, (void *)(intptr_t)page);
   }
-  text(tile, &lv_font_montserrat_24, page != Page::None ? kAccent : kMuted, icon);
-  lv_obj_align(text(tile, &lv_font_montserrat_28, page != Page::None ? kText : kMuted, title), LV_ALIGN_TOP_LEFT, 44, -2);
+  text(tile, iconFont, page != Page::None ? kAccent : kMuted, icon);
+  lv_obj_align(text(tile, &lv_font_montserrat_28, page != Page::None ? kText : kMuted, title), LV_ALIGN_TOP_LEFT, 48, -2);
   lv_obj_t *status = text(tile, &lv_font_montserrat_16, kMuted, "");
   lv_obj_set_width(status, 340);
   lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
@@ -1474,8 +1476,8 @@ lv_obj_t *subTile(lv_obj_t *parent, int i, const char *icon, const char *title, 
 // Office: the room's devices. PC now; TV next; lights, heater, fan later.
 void buildOffice(lv_obj_t *tab) {
   lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
-  officeTileStatus[0] = subTile(tab, 0, LV_SYMBOL_POWER, "PC", Page::Pc);
-  officeTileStatus[1] = subTile(tab, 1, LV_SYMBOL_VIDEO, "TV", Page::Tv);
+  officeTileStatus[0] = subTile(tab, 0, ICON_PC, "PC", Page::Pc, &icons_28);
+  officeTileStatus[1] = subTile(tab, 1, ICON_TV, "TV", Page::Tv, &icons_28);
 }
 
 // Controls: Arc, restarts and the panel itself.
@@ -1548,8 +1550,9 @@ void buildHome() {
   lv_obj_set_pos(homeLayer, 0, kTopBar);
   const char *titles[kSectionCount] = {"Overview", "Homelab", "GitHub", "Office",
                                        "Network", "Minecraft", "Racing", "Controls"};
-  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_DRIVE, LV_SYMBOL_SHUFFLE, LV_SYMBOL_HOME,
-                                      LV_SYMBOL_WIFI, LV_SYMBOL_IMAGE, LV_SYMBOL_CHARGE, LV_SYMBOL_SETTINGS};
+  // Custom icon font (icons.h): Font Awesome Free + Material Design Icons.
+  const char *icons[kSectionCount] = {ICON_OVERVIEW, ICON_HOMELAB, ICON_GITHUB, ICON_OFFICE,
+                                      ICON_NETWORK, ICON_MINECRAFT, ICON_RACING, ICON_CONTROLS};
   constexpr int gap = 12, margin = 16;
   constexpr int w = (800 - 2 * margin - (kHomeColumns - 1) * gap) / kHomeColumns, h = 196;
   const lv_font_t *titleFont = kHomeColumns > 3 ? &lv_font_montserrat_24 : &lv_font_montserrat_28;
@@ -1568,7 +1571,7 @@ void buildHome() {
     lv_obj_set_style_bg_color(tile, lv_color_hex(0x1E1E22), LV_STATE_PRESSED);
     lv_obj_add_event_cb(tile, [](lv_event_t *e) { showSection((int)(intptr_t)lv_event_get_user_data(e)); },
                         LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    text(tile, &lv_font_montserrat_28, kAccent, icons[i]);
+    text(tile, &icons_28, kAccent, icons[i]);
     lv_obj_t *t = text(tile, titleFont, kText, titles[i]);
     lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 54);
     tileStatus[i] = text(tile, &lv_font_montserrat_16, kMuted, "");

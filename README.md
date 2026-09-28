@@ -121,3 +121,11 @@ All endpoints take `Authorization: Bearer <token>`.
   perfectly transparent icons.
 - **`LV_LABEL_LONG_DOT` needs a real width.** With only a max-width, the
   label can collapse to nothing but "…".
+
+## Credits
+
+Tile icons come from [Font Awesome Free](https://fontawesome.com) (icons
+CC BY 4.0, see fontawesome.com/license/free) and
+[Material Design Icons](https://pictogrammers.com/library/mdi/) (Apache-2.0),
+converted to an LVGL font (`src/icons_28.c`) with
+[lv_font_conv](https://github.com/lvgl/lv_font_conv).
