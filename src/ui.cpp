@@ -64,7 +64,7 @@ lv_obj_t *mcState, *mcPlayers, *mcTps, *mcButtons, *mcLogList;
 lv_obj_t *quietLabel = nullptr;
 lv_obj_t *wakeButton = nullptr, *wakeLabel = nullptr;  // Wake PC, relabelled with the PC's state
 lv_obj_t *pcStateLabel = nullptr, *pcHint = nullptr;
-lv_obj_t *tvStateLabel = nullptr, *tvAppLabel = nullptr;
+lv_obj_t *tvStateLabel = nullptr, *tvInfoLabel = nullptr, *fireStateLabel = nullptr, *fireAppLabel = nullptr;
 lv_obj_t *controlTileStatus[3], *officeTileStatus[2];
 
 lv_obj_t *toast;
@@ -183,12 +183,14 @@ void showToast(const String &message, uint32_t color) {
 
 String lastActionId;
 
+bool isRemoteKey(const String &id) { return id.startsWith("tv:") || id.startsWith("fire:"); }
+
 void run(const String &id, const String &label) {
   net::runAction(id);
   lastActionId = id;
   // TV remote keys are pressed in quick succession; a toast per press is
   // noise. They only toast if one fails.
-  if (!id.startsWith("tv:")) showToast(label + "...", kMuted);
+  if (!isRemoteKey(id)) showToast(label + "...", kMuted);
 }
 
 void confirmThen(const String &id, const String &label) {
@@ -332,7 +334,7 @@ void showWifiSetup() {
 // with Back. Data comes from Arc (which reads it through Beacon), fetched
 // only while a page is open.
 
-enum class Page { None, Players, World, Inventory, Pc, Tv, ArcTools, Restarts, PanelSettings };
+enum class Page { None, Players, World, Inventory, Pc, Tv, FireStick, ArcTools, Restarts, PanelSettings };
 Page openPage = Page::None;
 lv_obj_t *pageLayer, *pageTitle, *pageBody;
 uint32_t pageFetchedAt = 0;
@@ -379,6 +381,7 @@ void openWorld() {
 }
 
 void backToPlayers();
+void openControls(Page page);
 
 void buildPageLayer() {
   pageLayer = bare(mainScreen);
@@ -390,6 +393,7 @@ void buildPageLayer() {
 
   lv_obj_t *back = localButton(pageLayer, LV_SYMBOL_LEFT "  Back", [](lv_event_t *) {
     if (openPage == Page::Inventory) backToPlayers();
+    else if (openPage == Page::FireStick) openControls(Page::Tv);
     else closePage();
   });
   lv_obj_set_size(back, 130, 44);
@@ -1057,51 +1061,79 @@ void renderControlsPage(Page page) {
     }
     if (!shown) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "PC controls aren't set up."), 400, 20);
     applyPc();
-  } else if (page == Page::Tv) {
-    // A remote: power and volume on the left under the TV's state, d-pad
-    // and Home / Back / Play-Pause on the right. Keys go through the Fire TV
-    // Stick; power reaches the TV itself over HDMI-CEC.
-    lv_obj_t *card = box(pageBody, 300, 352);
-    lv_obj_set_style_pad_all(card, 16, 0);
-    text(card, &lv_font_montserrat_14, kMuted, "Office TV (via Fire TV)");
-    track(text(card, &lv_font_montserrat_36, kText, "-"), &tvStateLabel);
-    lv_obj_align(tvStateLabel, LV_ALIGN_TOP_LEFT, 0, 22);
-    track(text(card, &lv_font_montserrat_16, kMuted, ""), &tvAppLabel);
-    lv_obj_set_width(tvAppLabel, 268);
-    lv_label_set_long_mode(tvAppLabel, LV_LABEL_LONG_DOT);
-    lv_obj_align(tvAppLabel, LV_ALIGN_TOP_LEFT, 0, 70);
+  } else if (page == Page::Tv || page == Page::FireStick) {
+    // TV: the Hisense itself — power, volume, inputs and its remote keys.
+    // Fire Stick: its own remote (via ADB), a side page of the TV one.
+    bool fire = page == Page::FireStick;
+    lv_obj_t *card = box(pageBody, 250, 352);
+    lv_obj_set_style_pad_all(card, 14, 0);
+    text(card, &lv_font_montserrat_14, kMuted, fire ? "Fire TV Stick" : "Office TV");
+    lv_obj_t **stateSlot = fire ? &fireStateLabel : &tvStateLabel;
+    lv_obj_t **infoSlot = fire ? &fireAppLabel : &tvInfoLabel;
+    track(text(card, &lv_font_montserrat_36, kText, "-"), stateSlot);
+    lv_obj_align(*stateSlot, LV_ALIGN_TOP_LEFT, 0, 20);
+    track(text(card, &lv_font_montserrat_16, kMuted, ""), infoSlot);
+    lv_obj_set_width(*infoSlot, 222);
+    lv_label_set_long_mode(*infoSlot, LV_LABEL_LONG_WRAP);
+    lv_obj_align(*infoSlot, LV_ALIGN_TOP_LEFT, 0, 66);
 
     struct Key { const char *id, *label; lv_obj_t *parent; int x, y, w, h; };
-    const int padX = 312 + (464 - 346) / 2;
-    const Key keys[] = {
-        {"tv:on", LV_SYMBOL_POWER " On", card, 0, 180, 130, 64},
-        {"tv:off", LV_SYMBOL_POWER " Off", card, 138, 180, 130, 64},
-        {"tv:vol-down", LV_SYMBOL_MINUS, card, 0, 252, 84, 64},
-        {"tv:mute", LV_SYMBOL_MUTE, card, 92, 252, 84, 64},
-        {"tv:vol-up", LV_SYMBOL_PLUS, card, 184, 252, 84, 64},
-        {"tv:up", LV_SYMBOL_UP, pageBody, padX + 118, 0, 110, 82},
-        {"tv:left", LV_SYMBOL_LEFT, pageBody, padX, 90, 110, 82},
-        {"tv:ok", "OK", pageBody, padX + 118, 90, 110, 82},
-        {"tv:right", LV_SYMBOL_RIGHT, pageBody, padX + 236, 90, 110, 82},
-        {"tv:down", LV_SYMBOL_DOWN, pageBody, padX + 118, 180, 110, 82},
-        {"tv:home", LV_SYMBOL_HOME " Home", pageBody, 312, 284, 150, 68},
-        {"tv:back", LV_SYMBOL_BACKSPACE " Back", pageBody, 469, 284, 150, 68},
-        {"tv:playpause", LV_SYMBOL_PLAY " " LV_SYMBOL_PAUSE, pageBody, 626, 284, 150, 68},
+    const char *p = fire ? "fire:" : "tv:";
+    // Left card: power (TV) or wake (Fire Stick), then volume (TV only).
+    // Centre: d-pad with OK, then Home / Back / Play-Pause.
+    // Right: inputs + the Fire Stick button (TV), or nothing (Fire Stick).
+    std::vector<Key> keys = {
+        {"up", LV_SYMBOL_UP, pageBody, 356, 0, 90, 72},
+        {"left", LV_SYMBOL_LEFT, pageBody, 262, 78, 90, 72},
+        {"ok", "OK", pageBody, 356, 78, 90, 72},
+        {"right", LV_SYMBOL_RIGHT, pageBody, 450, 78, 90, 72},
+        {"down", LV_SYMBOL_DOWN, pageBody, 356, 156, 90, 72},
+        {"home", LV_SYMBOL_HOME, pageBody, 262, 240, 90, 64},
+        {"back", LV_SYMBOL_BACKSPACE, pageBody, 356, 240, 90, 64},
+        {"playpause", LV_SYMBOL_PLAY LV_SYMBOL_PAUSE, pageBody, 450, 240, 90, 64},
     };
+    if (fire) {
+      keys.push_back({"wake", LV_SYMBOL_POWER " Wake", card, 0, 180, 222, 64});
+    } else {
+      keys.push_back({"on", LV_SYMBOL_POWER " On", card, 0, 180, 107, 60});
+      keys.push_back({"off", LV_SYMBOL_POWER " Off", card, 115, 180, 107, 60});
+      keys.push_back({"vol-down", LV_SYMBOL_MINUS, card, 0, 248, 70, 60});
+      keys.push_back({"mute", LV_SYMBOL_MUTE, card, 76, 248, 70, 60});
+      keys.push_back({"vol-up", LV_SYMBOL_PLUS, card, 152, 248, 70, 60});
+    }
     int shown = 0;
-    for (const Key &k : keys) {
+    for (const Key &key : keys) {
+      String id = String(p) + key.id;
       for (const auto &a : snap->actions) {
-        if (a.id != k.id) continue;
-        lv_obj_t *b = actionButton(k.parent, a, k.w, k.h);
-        lv_obj_set_pos(b, k.x, k.y);
+        if (a.id != id) continue;
+        lv_obj_t *b = actionButton(key.parent, a, key.w, key.h);
+        lv_obj_set_pos(b, key.x, key.y);
         lv_obj_t *label = lv_obj_get_child(b, 0);
-        lv_label_set_text(label, k.label);  // symbols live here; the backend's labels are ASCII-only
+        lv_label_set_text(label, key.label);  // symbols live here; the backend's labels are ASCII-only
         lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
         lv_obj_center(label);
         shown++;
       }
     }
-    if (!shown) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "TV controls aren't set up."), 330, 20);
+    if (!fire) {
+      // Inputs, named by the backend (e.g. "PS5"), then the Fire Stick's own remote.
+      lv_obj_set_pos(text(pageBody, &lv_font_montserrat_14, kMuted, "Inputs"), 552, 0);
+      int y = 20;
+      for (const auto &a : snap->actions) {
+        if (a.group != "TV inputs") continue;
+        lv_obj_t *b = actionButton(pageBody, a, 224, 58);
+        lv_obj_set_pos(b, 552, y);
+        y += 64;
+      }
+      if (snap->fireConfigured) {
+        lv_obj_t *fb = localButton(pageBody, "Fire Stick  " LV_SYMBOL_RIGHT, [](lv_event_t *) { openControls(Page::FireStick); });
+        lv_obj_set_size(fb, 224, 76);
+        lv_obj_set_pos(fb, 552, 276);
+        lv_obj_set_style_border_width(fb, 1, 0);
+        lv_obj_set_style_border_color(fb, lv_color_hex(kAccent), 0);
+      }
+    }
+    if (!shown) lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kMuted, "TV controls aren't set up."), 270, 20);
     applyTv();
   } else if (page == Page::ArcTools) {
     actionGrid("Arc", 382, 110);
@@ -1130,6 +1162,7 @@ void renderControlsPage(Page page) {
 void openControls(Page page) {
   const char *title = page == Page::Pc         ? "PC"
                       : page == Page::Tv       ? "TV"
+                      : page == Page::FireStick ? "Fire Stick"
                       : page == Page::ArcTools ? "Arc"
                       : page == Page::Restarts ? "Restarts"
                                                : "Panel";
@@ -1659,14 +1692,29 @@ void applyPc() {
   if (wakeLabel) setText(wakeLabel, LV_SYMBOL_POWER " Wake PC");
 }
 
-// The TV page's state line: off / idle / playing, and the app in front.
+String titleCase(String v) {
+  if (v.length()) v.setCharAt(0, toupper(v[0]));
+  return v;
+}
+
+// TV page: the Hisense's power, input and volume. Fire Stick page: its
+// state and the app in front.
 void applyTv() {
-  if (!tvStateLabel) return;
-  String state = snap->tvState;
-  if (state.length()) state.setCharAt(0, toupper(state[0]));
-  setText(tvStateLabel, snap->tvConfigured ? state.c_str() : "Not set up");
-  setTextColor(tvStateLabel, snap->tvState == "off" || !snap->tvConfigured ? kMuted : kOk);
-  setText(tvAppLabel, snap->tvApp.c_str());
+  if (tvStateLabel) {
+    setText(tvStateLabel, snap->tvConfigured ? titleCase(snap->tvState).c_str() : "Not set up");
+    setTextColor(tvStateLabel, snap->tvState == "on" ? kOk : kMuted);
+    String info;
+    if (snap->tvState == "on") {
+      if (snap->tvSource.length()) info += "Input: " + snap->tvSource + "\n";
+      if (snap->tvVolume >= 0) info += "Volume " + String(snap->tvVolume) + (snap->tvMuted ? " (muted)" : "");
+    }
+    setText(tvInfoLabel, info.c_str());
+  }
+  if (fireStateLabel) {
+    setText(fireStateLabel, snap->fireConfigured ? titleCase(snap->fireState).c_str() : "Not set up");
+    setTextColor(fireStateLabel, snap->fireState == "off" || !snap->fireConfigured ? kMuted : kOk);
+    setText(fireAppLabel, snap->fireApp.c_str());
+  }
 }
 
 void applyQuiet() {
@@ -1725,11 +1773,10 @@ void applyTiles() {
   if (!snap->pcConfigured) setSubTile(officeTileStatus[0], "Not set up", kMuted);
   else setSubTile(officeTileStatus[0], snap->pcOnline ? "On" : "Off", snap->pcOnline ? kOk : kMuted);
   if (!snap->tvConfigured) setSubTile(officeTileStatus[1], "Not set up", kMuted);
-  else {
-    String tv = snap->tvState;
-    if (tv.length()) tv.setCharAt(0, toupper(tv[0]));
-    setSubTile(officeTileStatus[1], snap->tvApp.length() ? tv + ", " + snap->tvApp : tv, tv == "Off" ? kMuted : kOk);
-  }
+  else if (snap->tvState == "on")
+    setSubTile(officeTileStatus[1], snap->tvSource.length() ? "On, " + snap->tvSource : String("On"), kOk);
+  else setSubTile(officeTileStatus[1], titleCase(snap->tvState), kMuted);
+
   if (snap->quietSeconds > 0)
     setSubTile(controlTileStatus[0], "Quiet: " + String((snap->quietSeconds + 59) / 60) + "m left", kWarn);
   else if (snap->unacked > 0) setSubTile(controlTileStatus[0], String(snap->unacked) + " to acknowledge", kAlert);
@@ -1835,7 +1882,7 @@ void update() {
   String message;
   bool ok;
   if (net::takeResult(message, ok)) {
-    if (!ok || !lastActionId.startsWith("tv:"))
+    if (!ok || !isRemoteKey(lastActionId))
       showToast(message.length() ? message : String(ok ? "Done" : "Failed"), ok ? kOk : kAlert);
     if (openPage == Page::World) net::fetchDetail("/panel/minecraft/world");  // show the rule as it really is now
   }

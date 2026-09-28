@@ -59,8 +59,10 @@ struct Snapshot {
   std::vector<PanelAction> actions;
   bool proxmoxConfigured = false;
   bool pcConfigured = false, pcOnline = false;  // the Wake-on-LAN PC, as the network sees it
-  bool tvConfigured = false;  // the office TV, via the backend's Fire TV integration
-  String tvState, tvApp;
+  // The office TV (the Hisense itself) and its Fire TV Stick, via the backend.
+  bool tvConfigured = false, tvMuted = false, fireConfigured = false;
+  String tvState, tvSource, fireState, fireApp;
+  int tvVolume = -1;  // percent, -1 unknown
   // Live counts from Arc's 30s Proxmox sense, for the home tile.
   int pxHostsUp = 0, pxHosts = 0, pxGuestsRunning = 0, pxGuests = 0, pxProblems = 0;
   // Network (UniFi): WAN status, live rates in kbps, ~30 min of history.
