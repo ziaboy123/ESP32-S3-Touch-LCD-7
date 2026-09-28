@@ -1572,7 +1572,9 @@ void buildHome() {
     lv_obj_add_event_cb(tile, [](lv_event_t *e) { showSection((int)(intptr_t)lv_event_get_user_data(e)); },
                         LV_EVENT_CLICKED, (void *)(intptr_t)i);
     lv_obj_t *icon = text(tile, i == kRacing ? &icons_racing_40 : &icons_28, kAccent, icons[i]);
-    if (i == kRacing) lv_obj_set_pos(icon, 0, -4);  // the taller font's line box sits the car a touch low
+    // Centre the car on the other icons: their glyphs centre ~14.5px down
+    // their 29px line; the car font's line is only 16px, glyph centred at 8.
+    if (i == kRacing) lv_obj_set_pos(icon, 0, 7);
     lv_obj_t *t = text(tile, titleFont, kText, titles[i]);
     lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 54);
     tileStatus[i] = text(tile, &lv_font_montserrat_16, kMuted, "");
