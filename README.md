@@ -38,12 +38,10 @@ a full-screen section with a Back button:
   with open issues and the latest Actions run (read-only token, held by
   the backend).
 - **Racing** — a companion screen for people watching an Assetto Corsa
-  session: who's driving, car and track, a live lap timer, last and best
-  laps and the record to beat. Below, driver profiles (add drivers with the
-  on-screen keyboard; "I'm driving" before a run) showing each driver's
-  best lap on every car/track they've driven, their rank against everyone
-  else's, with pins and deletes. Laps are recorded by the backend from AC's
-  UDP telemetry and kept on the homelab.
+  session: car and track, a live lap timer, last and best laps and the
+  record to beat; below, every recorded lap (time, car, track) newest
+  first with the best on each car/track marked, clearable whenever. Laps
+  are recorded by the backend from AC's UDP telemetry.
 - **Controls** — **Arc** (check now, acknowledge, quiet mode, briefing),
   **Restarts** (confirm-first service restarts) and **Panel** (Wi-Fi setup,
   screen off, firmware and address).

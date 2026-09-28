@@ -96,7 +96,6 @@ std::shared_ptr<Snapshot> parse(JsonDocument &doc) {
   s->ghStreak = doc["github"]["streak"] | 0;
   s->ghToday = doc["github"]["today"] | 0;
   s->racingLive = doc["racing"]["live"] | false;
-  s->racingDriver = doc["racing"]["driver"] | "";
   s->racingTrack = doc["racing"]["track"] | "";
   s->racingLaps = doc["racing"]["laps"] | 0;
   JsonObject px = doc["proxmox_summary"];

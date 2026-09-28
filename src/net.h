@@ -68,7 +68,7 @@ struct Snapshot {
   int ghStreak = 0, ghToday = 0;
   // Racing summary for the home tile (the page polls its own endpoint).
   bool racingLive = false;
-  String racingDriver, racingTrack;
+  String racingTrack;
   int racingLaps = 0;
   // Live counts from Arc's 30s Proxmox sense, for the home tile.
   int pxHostsUp = 0, pxHosts = 0, pxGuestsRunning = 0, pxGuests = 0, pxProblems = 0;
