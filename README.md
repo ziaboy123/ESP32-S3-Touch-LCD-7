@@ -12,7 +12,7 @@ never send an arbitrary command.
 
 ## What's on it
 
-A home screen of six tiles, each with a live one-line status, each opening
+A 4x2 home screen of tiles, each with a live one-line status, each opening
 a full-screen section with a Back button:
 
 - **Overview** — one big status card (green / red / amber once
@@ -33,6 +33,10 @@ a full-screen section with a Back button:
   (power, volume, inputs such as the consoles, d-pad, home, back,
   play/pause) with a side page for a **streaming stick's own remote**, all
   performed by the backend.
+- **GitHub** — the contribution graph and current streak, the latest
+  commits across the most recently pushed repos, and repos by last push
+  with open issues and the latest Actions run (read-only token, held by
+  the backend).
 - **Controls** — **Arc** (check now, acknowledge, quiet mode, briefing),
   **Restarts** (confirm-first service restarts) and **Panel** (Wi-Fi setup,
   screen off, firmware and address).

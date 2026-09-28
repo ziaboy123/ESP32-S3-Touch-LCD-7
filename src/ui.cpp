@@ -43,7 +43,7 @@ constexpr uint32_t kHomeAfterMs = 3 * 60 * 1000;  // untouched this long: drift 
 constexpr uint32_t kProxmoxRefreshMs = 15000;
 
 // The home screen's tiles, each opening one full-screen section.
-enum Section { kOverview, kHomelab, kOffice, kNetwork, kMinecraft, kControls, kSectionCount };
+enum Section { kOverview, kHomelab, kOffice, kNetwork, kMinecraft, kGithub, kControls, kSectionCount };
 constexpr int kHome = -1;
 int currentSection = kHome;
 bool screenOffByHand = false;  // Screen off button pressed; see applyBacklight()
@@ -1170,6 +1170,97 @@ void openControls(Page page) {
   renderControlsPage(page);
 }
 
+// GitHub ---------------------------------------------------------------------
+// Contribution graph and streak up top, recent commits and repos below.
+// Fetched from the backend (which holds a read-only token) while open.
+
+lv_obj_t *githubBody;
+uint32_t githubFetchedAt = 0;
+bool githubHave = false;
+constexpr uint32_t kGithubRefreshMs = 60000;
+// GitHub's own dark-theme greens, empty to busiest.
+constexpr uint32_t kContribColors[5] = {0x161B22, 0x0E4429, 0x006D32, 0x26A641, 0x39D353};
+
+void githubMessage(const char *message) {
+  lv_obj_clean(githubBody);
+  lv_obj_center(text(githubBody, &lv_font_montserrat_20, kMuted, message));
+}
+
+void fetchGithub() {
+  githubFetchedAt = millis();
+  net::fetchDetail("/panel/github");
+}
+
+void renderGithub(JsonDocument &doc) {
+  lv_obj_clean(githubBody);
+  githubHave = true;
+
+  lv_obj_t *top = box(githubBody, 776, 132);
+  lv_obj_set_style_pad_all(top, 14, 0);
+  JsonArrayConst levels = doc["levels"].as<JsonArrayConst>();
+  int offset = doc["first_weekday"] | 0, i = 0;
+  for (JsonVariantConst level : levels) {
+    int slot = i + offset;
+    lv_obj_t *sq = bare(top);
+    lv_obj_set_size(sq, 12, 12);
+    lv_obj_set_pos(sq, (slot / 7) * 15, (slot % 7) * 15);
+    lv_obj_set_style_radius(sq, 2, 0);
+    lv_obj_set_style_bg_opa(sq, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(sq, lv_color_hex(kContribColors[constrain(level.as<int>(), 0, 4)]), 0);
+    i++;
+  }
+  int streak = doc["streak"] | 0;
+  lv_obj_t *st = text(top, &lv_font_montserrat_36, streak ? 0x39D353 : kMuted, (String(streak) + "-day streak").c_str());
+  lv_obj_set_pos(st, 440, 4);
+  String sub = String((int)(doc["today"] | 0)) + " today   " + String((int)(doc["year_total"] | 0)) + " this year";
+  lv_obj_set_pos(text(top, &lv_font_montserrat_16, kText, sub.c_str()), 442, 56);
+  lv_obj_set_pos(text(top, &lv_font_montserrat_14, kMuted, (String("@") + (const char *)(doc["user"] | "")).c_str()), 442, 82);
+
+  lv_obj_t *commits = box(githubBody, 420, 210);
+  lv_obj_set_pos(commits, 0, 142);
+  lv_obj_set_style_pad_all(commits, 12, 0);
+  column(commits, 8);
+  text(commits, &lv_font_montserrat_14, kMuted, "Recent commits");
+  int n = 0;
+  for (JsonObjectConst c : doc["commits"].as<JsonArrayConst>()) {
+    if (n++ >= 6) break;
+    lv_obj_t *r = bare(commits);
+    lv_obj_set_size(r, 396, 20);
+    lv_obj_t *repo = text(r, &lv_font_montserrat_14, 0x58A6FF, c["repo"] | "");
+    lv_label_set_long_mode(repo, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(repo, 110);
+    lv_obj_t *msg = text(r, &lv_font_montserrat_14, kText, c["message"] | "");
+    lv_label_set_long_mode(msg, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(msg, 240);
+    lv_obj_set_pos(msg, 116, 0);
+    lv_obj_align(text(r, &lv_font_montserrat_14, kMuted, c["ago"] | ""), LV_ALIGN_TOP_RIGHT, 0, 0);
+  }
+  if (!n) text(commits, &lv_font_montserrat_14, kMuted, "No recent commits.");
+
+  lv_obj_t *repos = box(githubBody, 346, 210);
+  lv_obj_set_pos(repos, 430, 142);
+  lv_obj_set_style_pad_all(repos, 12, 0);
+  column(repos, 8);
+  text(repos, &lv_font_montserrat_14, kMuted, "Repos");
+  n = 0;
+  for (JsonObjectConst r : doc["repos"].as<JsonArrayConst>()) {
+    if (n++ >= 6) break;
+    lv_obj_t *row = bare(repos);
+    lv_obj_set_size(row, 322, 20);
+    String ci = r["ci"] | "";
+    uint32_t dotColor = ci == "pass" ? kOk : ci == "fail" ? kAlert : ci == "running" ? kWarn : 0x3F3F46;
+    lv_obj_align(dot(row, dotColor, 8), LV_ALIGN_LEFT_MID, 0, 0);
+    String name = String((const char *)(r["name"] | "")) + ((r["private"] | false) ? "  (private)" : "");
+    lv_obj_t *nm = text(row, &lv_font_montserrat_14, kText, name.c_str());
+    lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(nm, 220);
+    lv_obj_set_pos(nm, 14, 0);
+    int issues = r["issues"] | 0;
+    String right = (issues ? String(issues) + " open  " : String("")) + (const char *)(r["ago"] | "");
+    lv_obj_align(text(row, &lv_font_montserrat_14, kMuted, right.c_str()), LV_ALIGN_TOP_RIGHT, 0, 0);
+  }
+}
+
 void handleDetail() {
   String path, body;
   int status;
@@ -1177,6 +1268,15 @@ void handleDetail() {
   bool players = path.startsWith("/panel/minecraft/players");
   bool world = path.startsWith("/panel/minecraft/world");
   bool inventory = path.startsWith("/panel/minecraft/inventory/");
+  if (path == "/panel/github") {
+    if (currentSection != kGithub) return;
+    JsonDocument doc;
+    if (status == 200 && !deserializeJson(doc, body)) renderGithub(doc);
+    else if (!githubHave)
+      githubMessage(status == 404 ? "GitHub isn't set up yet.\nRun deploy/set-github-token.sh on the Mac."
+                                  : "Couldn't reach GitHub.");
+    return;
+  }
   if (path == "/panel/proxmox") {
     if (currentSection != kHomelab) return;
     if (status == 200 && !deserializeJson(proxmoxDoc, body)) {
@@ -1407,6 +1507,10 @@ void showSection(int section) {
     else lv_obj_add_flag(sectionLayers[i], LV_OBJ_FLAG_HIDDEN);
   }
   currentSection = section;
+  if (section == kGithub) {
+    if (!githubHave) githubMessage("Loading...");
+    fetchGithub();
+  }
   if (section == kHomelab) {
     if (!proxmoxHave) proxmoxMessage("Loading...");
     fetchProxmox();
@@ -1436,15 +1540,15 @@ lv_obj_t *buildSection(int section, const char *title) {
 // Home screen grid. kHomeColumns = 3 gives a 3x2 of large tiles; 4 gives a
 // 4x2 with room for two more sections (the spare slots show as faint
 // outlines until something fills them).
-constexpr int kHomeColumns = 3;
+constexpr int kHomeColumns = 4;
 
 void buildHome() {
   homeLayer = bare(mainScreen);
   lv_obj_set_size(homeLayer, board::kWidth, board::kHeight - kTopBar);
   lv_obj_set_pos(homeLayer, 0, kTopBar);
-  const char *titles[kSectionCount] = {"Overview", "Homelab", "Office", "Network", "Minecraft", "Controls"};
-  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_DRIVE, LV_SYMBOL_HOME,
-                                      LV_SYMBOL_WIFI, LV_SYMBOL_IMAGE, LV_SYMBOL_SETTINGS};
+  const char *titles[kSectionCount] = {"Overview", "Homelab", "Office", "Network", "Minecraft", "GitHub", "Controls"};
+  const char *icons[kSectionCount] = {LV_SYMBOL_EYE_OPEN, LV_SYMBOL_DRIVE, LV_SYMBOL_HOME, LV_SYMBOL_WIFI,
+                                      LV_SYMBOL_IMAGE, LV_SYMBOL_SHUFFLE, LV_SYMBOL_SETTINGS};
   constexpr int gap = 12, margin = 16;
   constexpr int w = (800 - 2 * margin - (kHomeColumns - 1) * gap) / kHomeColumns, h = 196;
   const lv_font_t *titleFont = kHomeColumns > 3 ? &lv_font_montserrat_24 : &lv_font_montserrat_28;
@@ -1496,6 +1600,7 @@ void buildMain() {
   lv_obj_t *controlsBody = buildSection(kControls, "Controls");
   lv_obj_add_flag(controlsBody, LV_OBJ_FLAG_SCROLLABLE);
   buildControls(controlsBody);
+  githubBody = buildSection(kGithub, "GitHub");
 
   buildPageLayer();
 
@@ -1765,6 +1870,10 @@ void applyTiles() {
   else if (!snap->netOnline) setTile(kNetwork, "Internet down", kAlert, kAlert);
   else setTile(kNetwork, String(snap->netLatency) + " ms, " + String(snap->netDeviceCount) + " devices", kOk);
 
+  if (!snap->ghConfigured) setTile(kGithub, "Needs a token", kWarn);
+  else setTile(kGithub, String(snap->ghStreak) + "-day streak, " + String(snap->ghToday) + " today",
+               snap->ghStreak ? kOk : kMuted);
+
   if (!snap->mcConfigured) setTile(kMinecraft, "Not set up", kMuted);
   else if (!snap->mcUp) setTile(kMinecraft, "Offline", kAlert, kAlert);
   else setTile(kMinecraft, snap->mcOnline ? "Online, " + String(snap->mcOnline) + " playing" : String("Online, nobody on"), kOk);
@@ -1889,6 +1998,7 @@ void update() {
 
   handleDetail();
   if (currentSection == kHomelab && millis() - proxmoxFetchedAt > kProxmoxRefreshMs) fetchProxmox();
+  if (currentSection == kGithub && millis() - githubFetchedAt > kGithubRefreshMs) fetchGithub();
   // Left alone for a while: drift back to the home tiles (unless an alert is showing).
   if (currentSection != kHome && lv_display_get_inactive_time(nullptr) > kHomeAfterMs &&
       !(snap && snap->unacked > 0 && currentSection == kOverview))

@@ -63,6 +63,9 @@ struct Snapshot {
   bool tvConfigured = false, tvMuted = false, fireConfigured = false;
   String tvState, tvSource, fireState, fireApp;
   int tvVolume = -1;  // percent, -1 unknown
+  // GitHub summary for the home tile (the page itself is fetched on open).
+  bool ghConfigured = false;
+  int ghStreak = 0, ghToday = 0;
   // Live counts from Arc's 30s Proxmox sense, for the home tile.
   int pxHostsUp = 0, pxHosts = 0, pxGuestsRunning = 0, pxGuests = 0, pxProblems = 0;
   // Network (UniFi): WAN status, live rates in kbps, ~30 min of history.
