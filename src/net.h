@@ -66,6 +66,10 @@ struct Snapshot {
   // GitHub summary for the home tile (the page itself is fetched on open).
   bool ghConfigured = false;
   int ghStreak = 0, ghToday = 0;
+  // Racing summary for the home tile (the page polls its own endpoint).
+  bool racingLive = false;
+  String racingDriver, racingTrack;
+  int racingLaps = 0;
   // Live counts from Arc's 30s Proxmox sense, for the home tile.
   int pxHostsUp = 0, pxHosts = 0, pxGuestsRunning = 0, pxGuests = 0, pxProblems = 0;
   // Network (UniFi): WAN status, live rates in kbps, ~30 min of history.
@@ -98,6 +102,9 @@ void requestRefresh();
 // Downloading a new build from Arc (it restarts itself when done).
 bool updatingFirmware();
 void runAction(const String &id);
+// POST any backend path (e.g. /panel/racing/select/<id>); its {ok, message}
+// reply arrives through takeResult() like an action's.
+void post(const String &path);
 // The result of the last action, once — for the UI's toast.
 bool takeResult(String &message, bool &ok);
 

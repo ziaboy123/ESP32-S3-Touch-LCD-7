@@ -17,7 +17,7 @@ constexpr uint32_t kHttpTimeoutMs = 8000;
 
 SemaphoreHandle_t lock;
 QueueHandle_t actionQueue;  // action ids, fixed-size char buffers
-struct ActionId { char id[64]; };
+struct ActionId { char path[160]; };  // a full API path to POST, e.g. /panel/action/<id>
 
 SnapshotPtr current;
 uint32_t gen = 0;
@@ -95,6 +95,10 @@ std::shared_ptr<Snapshot> parse(JsonDocument &doc) {
   s->ghConfigured = doc["github"]["configured"] | false;
   s->ghStreak = doc["github"]["streak"] | 0;
   s->ghToday = doc["github"]["today"] | 0;
+  s->racingLive = doc["racing"]["live"] | false;
+  s->racingDriver = doc["racing"]["driver"] | "";
+  s->racingTrack = doc["racing"]["track"] | "";
+  s->racingLaps = doc["racing"]["laps"] | 0;
   JsonObject px = doc["proxmox_summary"];
   s->pxHostsUp = px["hosts_up"] | 0;
   s->pxHosts = px["hosts"] | 0;
@@ -147,13 +151,13 @@ bool fetchState() {
   return true;
 }
 
-void postAction(const char *id) {
+void postAction(const char *path) {
   String message;
   bool ok = false;
   WiFiClient client;
   HTTPClient http;
   http.setTimeout(30000);  // synchronous restarts can take a few seconds
-  if (http.begin(client, String(ARC_URL) + "/panel/action/" + id)) {
+  if (http.begin(client, String(ARC_URL) + path)) {
     http.addHeader("Authorization", String("Bearer ") + ARC_PANEL_TOKEN);
     int code = http.POST("");
     if (code == 200) {
@@ -167,7 +171,7 @@ void postAction(const char *id) {
     }
     http.end();
   }
-  Serial.printf("[net] action %s -> %s %s\n", id, ok ? "ok" : "failed", message.c_str());
+  Serial.printf("[net] POST %s -> %s %s\n", path, ok ? "ok" : "failed", message.c_str());
   Guard g;
   resultReady = true;
   resultOk = ok;
@@ -289,7 +293,7 @@ void task(void *) {
       ActionId action;
       fetchWantedDetail();
       if (xQueueReceive(actionQueue, &action, 0) == pdTRUE) {
-        postAction(action.id);
+        postAction(action.path);
         refreshWanted = true;
       }
       if (refreshWanted || millis() - lastPoll >= kPollMs) {
@@ -342,11 +346,13 @@ void requestRefresh() { refreshWanted = true; }
 
 bool updatingFirmware() { return updating; }
 
-void runAction(const String &id) {
+void post(const String &path) {
   ActionId action = {};
-  strlcpy(action.id, id.c_str(), sizeof action.id);
+  strlcpy(action.path, path.c_str(), sizeof action.path);
   xQueueSend(actionQueue, &action, 0);
 }
+
+void runAction(const String &id) { post("/panel/action/" + id); }
 
 bool takeResult(String &message, bool &ok) {
   Guard g;

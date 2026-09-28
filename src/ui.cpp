@@ -335,7 +335,7 @@ void showWifiSetup() {
 // with Back. Data comes from Arc (which reads it through Beacon), fetched
 // only while a page is open.
 
-enum class Page { None, Players, World, Inventory, Pc, Tv, FireStick, ArcTools, Restarts, PanelSettings };
+enum class Page { None, Players, World, Inventory, Pc, Tv, FireStick, ArcTools, Restarts, PanelSettings, Driver, AddDriver };
 Page openPage = Page::None;
 lv_obj_t *pageLayer, *pageTitle, *pageBody;
 uint32_t pageFetchedAt = 0;
@@ -1262,6 +1262,261 @@ void renderGithub(JsonDocument &doc) {
   }
 }
 
+// Racing -----------------------------------------------------------------------
+// Assetto Corsa companion for people watching a sim session: who's driving,
+// car and track, a live lap timer and the record to beat; below, driver
+// profiles with each driver's best lap on every car/track they've driven.
+// The backend follows AC's telemetry and keeps the records on the homelab.
+
+lv_obj_t *racingBody, *raceDriver, *raceWhere, *raceTimer, *raceStats, *raceIdle, *raceLiveGroup, *raceDrivers;
+bool racingHave = false, raceLive = false;
+uint32_t racingFetchedAt = 0, racingDocAt = 0;
+int32_t raceLapMs = 0, raceAgeMs = 0;
+String racingDriversSig, driverId, driverName;
+constexpr uint32_t kRacingRefreshMs = 1000;
+
+void openDriver(const String &id, const String &name);
+void openAddDriver();
+
+String lapTime(int32_t ms) {
+  if (ms <= 0) return "0:00.000";
+  char buf[16];
+  snprintf(buf, sizeof buf, "%d:%02d.%03d", (int)(ms / 60000), (int)(ms / 1000 % 60), (int)(ms % 1000));
+  return buf;
+}
+
+String ordinal(int n) {
+  int t = n % 100;
+  const char *suffix = (t >= 11 && t <= 13) ? "th" : n % 10 == 1 ? "st" : n % 10 == 2 ? "nd" : n % 10 == 3 ? "rd" : "th";
+  return String(n) + suffix;
+}
+
+String urlEncode(const String &in) {
+  String out;
+  const char *hex = "0123456789ABCDEF";
+  for (unsigned char c : in) {
+    if (isalnum(c) || c == '-' || c == '_' || c == '.') out += (char)c;
+    else {
+      out += '%';
+      out += hex[c >> 4];
+      out += hex[c & 15];
+    }
+  }
+  return out;
+}
+
+void fetchRacing() {
+  racingFetchedAt = millis();
+  net::fetchDetail("/panel/racing");
+}
+
+void buildRacing(lv_obj_t *body) {
+  racingBody = body;
+  lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t *live = box(body, 776, 150);
+  lv_obj_set_style_pad_all(live, 16, 0);
+  raceIdle = text(live, &lv_font_montserrat_20, kMuted, "No session running.\nStart Assetto Corsa on the sim PC.");
+  lv_obj_align(raceIdle, LV_ALIGN_LEFT_MID, 0, 0);
+  raceLiveGroup = bare(live);
+  lv_obj_set_size(raceLiveGroup, 744, 118);
+  lv_obj_t *badge = text(raceLiveGroup, &lv_font_montserrat_14, kAlert, LV_SYMBOL_PLAY " LIVE");
+  lv_obj_set_pos(badge, 0, 0);
+  raceDriver = text(raceLiveGroup, &lv_font_montserrat_28, kText, "");
+  lv_obj_set_pos(raceDriver, 0, 22);
+  raceWhere = text(raceLiveGroup, &lv_font_montserrat_16, kMuted, "");
+  lv_obj_set_width(raceWhere, 300);
+  lv_label_set_long_mode(raceWhere, LV_LABEL_LONG_DOT);
+  lv_obj_set_pos(raceWhere, 0, 60);
+  raceTimer = text(raceLiveGroup, &lv_font_montserrat_48, kText, "0:00.000");
+  lv_obj_set_pos(raceTimer, 300, 24);
+  raceStats = text(raceLiveGroup, &lv_font_montserrat_16, kText, "");
+  lv_obj_set_style_text_line_space(raceStats, 4, 0);
+  lv_obj_align(raceStats, LV_ALIGN_TOP_RIGHT, 0, 0);
+  lv_obj_add_flag(raceLiveGroup, LV_OBJ_FLAG_HIDDEN);
+
+  lv_obj_t *drivers = box(body, 776, 192);
+  lv_obj_set_pos(drivers, 0, 160);
+  lv_obj_set_style_pad_all(drivers, 12, 0);
+  text(drivers, &lv_font_montserrat_14, kMuted, "Drivers");
+  raceDrivers = bare(drivers);
+  lv_obj_set_size(raceDrivers, 752, 150);
+  lv_obj_set_pos(raceDrivers, 0, 20);
+  lv_obj_set_flex_flow(raceDrivers, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_style_pad_row(raceDrivers, 8, 0);
+  lv_obj_set_style_pad_column(raceDrivers, 8, 0);
+  lv_obj_add_flag(raceDrivers, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+void renderRacing(JsonDocument &doc) {
+  racingHave = true;
+  racingDocAt = millis();
+  JsonObjectConst live = doc["live"];
+  raceLive = live["active"] | false;
+  if (raceLive) {
+    lv_obj_add_flag(raceIdle, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(raceLiveGroup, LV_OBJ_FLAG_HIDDEN);
+    setText(raceDriver, live["driver"] | "");
+    setText(raceWhere, (String((const char *)(live["car"] | "")) + "  |  " + (const char *)(live["track"] | "")).c_str());
+    raceLapMs = live["lap_ms"] | 0;
+    raceAgeMs = live["age_ms"] | 0;
+    String holder = live["record_holder"] | "";
+    String stats = "Lap " + String((int)(live["lap"] | 1)) + "   " + String((int)(live["speed"] | 0)) + " km/h  " +
+                   (const char *)(live["gear"] | "") + "\nLast   " + (const char *)(live["last"] | "-") +
+                   "\nBest   " + (const char *)(live["session_best"] | "-") + "\nRecord " +
+                   (const char *)(live["record"] | "-") + (holder.length() ? " (" + holder + ")" : String(""));
+    setText(raceStats, stats.c_str());
+  } else {
+    lv_obj_remove_flag(raceIdle, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(raceLiveGroup, LV_OBJ_FLAG_HIDDEN);
+  }
+
+  String active = doc["active"] | "";
+  String sig = active;
+  for (JsonObjectConst d : doc["drivers"].as<JsonArrayConst>())
+    sig += String((const char *)(d["id"] | "")) + (const char *)(d["name"] | "") + String((int)(d["combos"] | 0));
+  if (sig == racingDriversSig) return;
+  racingDriversSig = sig;
+  lv_obj_clean(raceDrivers);
+  for (JsonObjectConst d : doc["drivers"].as<JsonArrayConst>()) {
+    String id = d["id"] | "", name = d["name"] | "";
+    bool driving = id == active;
+    lv_obj_t *b = box(raceDrivers, 180, 68, kButton);
+    lv_obj_set_style_pad_all(b, 10, 0);
+    lv_obj_set_style_border_width(b, driving ? 2 : 1, 0);
+    lv_obj_set_style_border_color(b, lv_color_hex(driving ? kAccent : kBorder), 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *n = text(b, &lv_font_montserrat_20, kText, name.c_str());
+    lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(n, 156);
+    int combos = d["combos"] | 0;
+    String sub = driving ? String("driving now") : String(combos) + (combos == 1 ? " car/track" : " car/tracks");
+    lv_obj_align(text(b, &lv_font_montserrat_14, driving ? kAccent : kMuted, sub.c_str()), LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_add_event_cb(b, [](lv_event_t *e) {
+      String payload = (const char *)lv_event_get_user_data(e);
+      int split = payload.indexOf('\n');
+      openDriver(payload.substring(0, split), payload.substring(split + 1));
+    }, LV_EVENT_CLICKED, attachId(b, id + "\n" + name));
+  }
+  lv_obj_t *add = localButton(raceDrivers, LV_SYMBOL_PLUS "  Add driver", [](lv_event_t *) { openAddDriver(); });
+  lv_obj_set_size(add, 180, 68);
+}
+
+void tickRacingTimer() {
+  if (!raceLive || !raceTimer) return;
+  setText(raceTimer, lapTime(raceLapMs + raceAgeMs + (int32_t)(millis() - racingDocAt)).c_str());
+}
+
+// Driver profile --------------------------------------------------------------
+
+// A plain button whose click handler gets `data` (a heap copy, freed with it).
+lv_obj_t *dataButton(lv_obj_t *parent, const char *label, int w, int h, const String &data, lv_event_cb_t cb) {
+  lv_obj_t *b = lv_button_create(parent);
+  lv_obj_set_size(b, w, h);
+  lv_obj_set_style_bg_color(b, lv_color_hex(kButton), 0);
+  lv_obj_set_style_radius(b, 10, 0);
+  lv_obj_center(text(b, &lv_font_montserrat_16, kText, label));
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, attachId(b, data));
+  return b;
+}
+
+void confirmPost(const String &path, const String &question) {
+  lv_obj_t *m = lv_msgbox_create(nullptr);
+  lv_obj_set_width(m, 460);
+  lv_msgbox_add_title(m, question.c_str());
+  lv_obj_t *yes = lv_msgbox_add_footer_button(m, "Delete");
+  lv_obj_t *no = lv_msgbox_add_footer_button(m, "Cancel");
+  lv_obj_set_style_bg_color(no, lv_color_hex(kButton), 0);
+  lv_obj_add_event_cb(yes, [](lv_event_t *e) {
+    net::post((const char *)lv_event_get_user_data(e));
+    lv_msgbox_close_async(lv_obj_get_parent(lv_obj_get_parent(lv_event_get_target_obj(e))));
+  }, LV_EVENT_CLICKED, attachId(yes, path));
+  lv_obj_add_event_cb(no, [](lv_event_t *e) {
+    lv_msgbox_close_async(lv_obj_get_parent(lv_obj_get_parent(lv_event_get_target_obj(e))));
+  }, LV_EVENT_CLICKED, nullptr);
+}
+
+void openDriver(const String &id, const String &name) {
+  driverId = id;
+  driverName = name;
+  showPage(Page::Driver, name.c_str());
+  net::fetchDetail("/panel/racing/driver/" + id);
+}
+
+void renderDriver(JsonDocument &doc) {
+  lv_obj_clean(pageBody);
+  worldClock = nullptr;
+  bool driving = doc["driving"] | false;
+  if (driving) {
+    lv_obj_set_pos(text(pageBody, &lv_font_montserrat_20, kAccent, LV_SYMBOL_PLAY "  Driving now"), 0, 12);
+  } else {
+    lv_obj_t *b = localButton(pageBody, LV_SYMBOL_PLAY "  I'm driving", [](lv_event_t *) {
+      net::post("/panel/racing/select/" + driverId);
+    });
+    lv_obj_set_size(b, 220, 48);
+    lv_obj_set_style_border_width(b, 1, 0);
+    lv_obj_set_style_border_color(b, lv_color_hex(kAccent), 0);
+  }
+  lv_obj_t *list = bare(pageBody);
+  lv_obj_set_size(list, 776, 290);
+  lv_obj_set_pos(list, 0, 62);
+  column(list, 8);
+  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+  JsonArrayConst combos = doc["combos"].as<JsonArrayConst>();
+  if (combos.size() == 0) text(list, &lv_font_montserrat_16, kMuted, "No laps yet. Tap \"I'm driving\" before a run.");
+  for (JsonObjectConst c : combos) {
+    lv_obj_t *r = box(list, 776, 62);
+    lv_obj_set_style_pad_all(r, 10, 0);
+    bool pinned = c["pinned"] | false;
+    if (pinned) lv_obj_set_style_border_color(r, lv_color_hex(kWarn), 0);
+    lv_obj_t *track = text(r, &lv_font_montserrat_20, kText, c["track"] | "");
+    lv_obj_set_pos(track, 0, -2);
+    lv_obj_t *car = text(r, &lv_font_montserrat_14, kMuted, c["car"] | "");
+    lv_obj_set_width(car, 300);
+    lv_label_set_long_mode(car, LV_LABEL_LONG_DOT);
+    lv_obj_set_pos(car, 0, 24);
+    lv_obj_set_pos(text(r, &lv_font_montserrat_24, pinned ? kWarn : kText, c["time"] | "-"), 320, 6);
+    int rank = c["rank"] | 1, of = c["of"] | 1;
+    String place = of > 1 ? ordinal(rank) + " of " + String(of) : String("only driver");
+    lv_obj_set_pos(text(r, &lv_font_montserrat_14, rank == 1 && of > 1 ? kOk : kMuted, place.c_str()), 470, 14);
+    String lapId = c["lap_id"] | "";
+    lv_obj_t *pin = dataButton(r, pinned ? "Unpin" : "Pin", 86, 40, lapId, [](lv_event_t *e) {
+      net::post(String("/panel/racing/pin/") + (const char *)lv_event_get_user_data(e));
+    });
+    lv_obj_align(pin, LV_ALIGN_RIGHT_MID, -60, 0);
+    lv_obj_t *del = dataButton(r, LV_SYMBOL_TRASH, 52, 40, lapId, [](lv_event_t *e) {
+      confirmPost(String("/panel/racing/delete/") + (const char *)lv_event_get_user_data(e),
+                  "Delete this lap? The next best one takes its place.");
+    });
+    lv_obj_align(del, LV_ALIGN_RIGHT_MID, 0, 0);
+  }
+}
+
+// Add driver ---------------------------------------------------------------------
+
+void openAddDriver() {
+  showPage(Page::AddDriver, "Add driver");
+  lv_obj_clean(pageBody);
+  worldClock = nullptr;
+  lv_obj_t *ta = lv_textarea_create(pageBody);
+  lv_textarea_set_one_line(ta, true);
+  lv_textarea_set_max_length(ta, 20);
+  lv_textarea_set_placeholder_text(ta, "Driver name");
+  lv_obj_set_size(ta, 776, 50);
+  lv_obj_t *kb = lv_keyboard_create(pageBody);
+  lv_obj_set_size(kb, 776, 280);
+  lv_obj_set_pos(kb, 0, 64);
+  lv_keyboard_set_textarea(kb, ta);
+  lv_obj_add_event_cb(kb, [](lv_event_t *e) {
+    lv_obj_t *ta = (lv_obj_t *)lv_event_get_user_data(e);
+    String name = lv_textarea_get_text(ta);
+    name.trim();
+    if (name.length()) net::post("/panel/racing/add/" + urlEncode(name));
+    closePage();
+    fetchRacing();
+  }, LV_EVENT_READY, ta);
+  lv_obj_add_event_cb(kb, [](lv_event_t *) { closePage(); }, LV_EVENT_CANCEL, nullptr);
+}
+
 void handleDetail() {
   String path, body;
   int status;
@@ -1269,6 +1524,19 @@ void handleDetail() {
   bool players = path.startsWith("/panel/minecraft/players");
   bool world = path.startsWith("/panel/minecraft/world");
   bool inventory = path.startsWith("/panel/minecraft/inventory/");
+  if (path == "/panel/racing") {
+    if (currentSection != kRacing) return;
+    JsonDocument doc;
+    if (status == 200 && !deserializeJson(doc, body)) renderRacing(doc);
+    return;
+  }
+  if (path.startsWith("/panel/racing/driver/")) {
+    if (openPage != Page::Driver || !path.endsWith(driverId)) return;
+    JsonDocument doc;
+    if (status == 200 && !deserializeJson(doc, body)) renderDriver(doc);
+    else pageMessage("Couldn't load that driver.");
+    return;
+  }
   if (path == "/panel/github") {
     if (currentSection != kGithub) return;
     JsonDocument doc;
@@ -1509,6 +1777,7 @@ void showSection(int section) {
     else lv_obj_add_flag(sectionLayers[i], LV_OBJ_FLAG_HIDDEN);
   }
   currentSection = section;
+  if (section == kRacing) fetchRacing();
   if (section == kGithub) {
     if (!githubHave) githubMessage("Loading...");
     fetchGithub();
@@ -1608,8 +1877,7 @@ void buildMain() {
   lv_obj_add_flag(controlsBody, LV_OBJ_FLAG_SCROLLABLE);
   buildControls(controlsBody);
   githubBody = buildSection(kGithub, "GitHub");
-  // Racing: the Assetto Corsa companion screen and lap records, next up.
-  lv_obj_center(text(buildSection(kRacing, "Racing"), &lv_font_montserrat_20, kMuted, "Coming soon."));
+  buildRacing(buildSection(kRacing, "Racing"));
 
   buildPageLayer();
 
@@ -1879,7 +2147,8 @@ void applyTiles() {
   else if (!snap->netOnline) setTile(kNetwork, "Internet down", kAlert, kAlert);
   else setTile(kNetwork, String(snap->netLatency) + " ms, " + String(snap->netDeviceCount) + " devices", kOk);
 
-  setTile(kRacing, "Coming soon", kMuted);
+  if (snap->racingLive) setTile(kRacing, "Live: " + snap->racingDriver + " at " + snap->racingTrack, kOk, kOk);
+  else setTile(kRacing, String(snap->racingLaps) + (snap->racingLaps == 1 ? " lap recorded" : " laps recorded"), kMuted);
 
   if (!snap->ghConfigured) setTile(kGithub, "Needs a token", kWarn);
   else setTile(kGithub, String(snap->ghStreak) + "-day streak, " + String(snap->ghToday) + " today",
@@ -2005,11 +2274,15 @@ void update() {
     if (!ok || !isRemoteKey(lastActionId))
       showToast(message.length() ? message : String(ok ? "Done" : "Failed"), ok ? kOk : kAlert);
     if (openPage == Page::World) net::fetchDetail("/panel/minecraft/world");  // show the rule as it really is now
+    if (openPage == Page::Driver) net::fetchDetail("/panel/racing/driver/" + driverId);
+    if (currentSection == kRacing && openPage == Page::None) fetchRacing();
   }
 
   handleDetail();
   if (currentSection == kHomelab && millis() - proxmoxFetchedAt > kProxmoxRefreshMs) fetchProxmox();
   if (currentSection == kGithub && millis() - githubFetchedAt > kGithubRefreshMs) fetchGithub();
+  if (currentSection == kRacing && openPage == Page::None && millis() - racingFetchedAt > kRacingRefreshMs) fetchRacing();
+  if (currentSection == kRacing) tickRacingTimer();
   // Left alone for a while: drift back to the home tiles (unless an alert is showing).
   if (currentSection != kHome && lv_display_get_inactive_time(nullptr) > kHomeAfterMs &&
       !(snap && snap->unacked > 0 && currentSection == kOverview))
