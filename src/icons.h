@@ -21,3 +21,6 @@ LV_FONT_DECLARE(icons_racing_40);
 #define ICON_CONTROLS "\xEF\x87\x9E"  // Font Awesome: sliders
 #define ICON_PC "\xEF\x8E\x90"  // Font Awesome: desktop
 #define ICON_TV "\xEF\x89\xAC"  // Font Awesome: tv
+#define ICON_ARC "\xEF\x8F\xAD"  // Font Awesome: shield-halved (Arc, the guardian)
+#define ICON_RESTARTS "\xEF\x8B\xB9"  // Font Awesome: rotate-right
+#define ICON_PANEL "\xEF\x8F\xBA"  // Font Awesome: tablet-screen-button

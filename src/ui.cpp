@@ -1611,9 +1611,9 @@ void buildOffice(lv_obj_t *tab) {
 // Controls: Arc, restarts and the panel itself.
 void buildControls(lv_obj_t *tab) {
   lv_obj_remove_flag(tab, LV_OBJ_FLAG_SCROLLABLE);
-  controlTileStatus[0] = subTile(tab, 0, LV_SYMBOL_BELL, "Arc", Page::ArcTools);
-  controlTileStatus[1] = subTile(tab, 1, LV_SYMBOL_REFRESH, "Restarts", Page::Restarts);
-  controlTileStatus[2] = subTile(tab, 2, LV_SYMBOL_SETTINGS, "Panel", Page::PanelSettings);
+  controlTileStatus[0] = subTile(tab, 0, ICON_ARC, "Arc", Page::ArcTools, &icons_28);
+  controlTileStatus[1] = subTile(tab, 1, ICON_RESTARTS, "Restarts", Page::Restarts, &icons_28);
+  controlTileStatus[2] = subTile(tab, 2, ICON_PANEL, "Panel", Page::PanelSettings, &icons_28);
 }
 
 lv_obj_t *homeLayer;
