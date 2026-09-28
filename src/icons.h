@@ -7,6 +7,9 @@
 #include <lvgl.h>
 
 LV_FONT_DECLARE(icons_28);
+// The sports car alone at 40px: it's wide and flat with more padding than the
+// others, so at 28px it read visibly smaller (26x12 against ~30x28).
+LV_FONT_DECLARE(icons_racing_40);
 
 #define ICON_OVERVIEW "\xEF\x98\xA5"  // Font Awesome: gauge-high
 #define ICON_HOMELAB "\xEF\x88\xB3"  // Font Awesome: server
@@ -14,7 +17,7 @@ LV_FONT_DECLARE(icons_28);
 #define ICON_OFFICE "\xF3\xB0\xA0\xA1"  // Material Design Icons: floor-plan (the whole room)
 #define ICON_NETWORK "\xEF\x9B\xBF"  // Font Awesome: network-wired
 #define ICON_MINECRAFT "\xF3\xB0\x8D\xB3"  // Material Design Icons: minecraft
-#define ICON_RACING "\xF3\xB0\x9E\xAC"  // Material Design Icons: car-sports
+#define ICON_RACING "\xF3\xB0\x9E\xAC"  // Material Design Icons: car-sports (use icons_racing_40)
 #define ICON_CONTROLS "\xEF\x87\x9E"  // Font Awesome: sliders
 #define ICON_PC "\xEF\x8E\x90"  // Font Awesome: desktop
 #define ICON_TV "\xEF\x89\xAC"  // Font Awesome: tv

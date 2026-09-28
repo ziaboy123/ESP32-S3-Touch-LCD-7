@@ -1571,7 +1571,8 @@ void buildHome() {
     lv_obj_set_style_bg_color(tile, lv_color_hex(0x1E1E22), LV_STATE_PRESSED);
     lv_obj_add_event_cb(tile, [](lv_event_t *e) { showSection((int)(intptr_t)lv_event_get_user_data(e)); },
                         LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    text(tile, &icons_28, kAccent, icons[i]);
+    lv_obj_t *icon = text(tile, i == kRacing ? &icons_racing_40 : &icons_28, kAccent, icons[i]);
+    if (i == kRacing) lv_obj_set_pos(icon, 0, -4);  // the taller font's line box sits the car a touch low
     lv_obj_t *t = text(tile, titleFont, kText, titles[i]);
     lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 54);
     tileStatus[i] = text(tile, &lv_font_montserrat_16, kMuted, "");
