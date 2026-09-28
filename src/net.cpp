@@ -92,7 +92,6 @@ std::shared_ptr<Snapshot> parse(JsonDocument &doc) {
   s->fireConfigured = tv["fire_configured"] | false;
   s->fireState = tv["fire_state"] | "";
   s->fireApp = tv["fire_app"] | "";
-  s->ps5State = tv["ps5"] | "";
   JsonObject px = doc["proxmox_summary"];
   s->pxHostsUp = px["hosts_up"] | 0;
   s->pxHosts = px["hosts"] | 0;

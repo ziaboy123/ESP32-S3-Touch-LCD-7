@@ -62,7 +62,6 @@ struct Snapshot {
   // The office TV (the Hisense itself) and its Fire TV Stick, via the backend.
   bool tvConfigured = false, tvMuted = false, fireConfigured = false;
   String tvState, tvSource, fireState, fireApp;
-  String ps5State;  // "on" = awake, "off" = rest mode, "" = not set up
   int tvVolume = -1;  // percent, -1 unknown
   // Live counts from Arc's 30s Proxmox sense, for the home tile.
   int pxHostsUp = 0, pxHosts = 0, pxGuestsRunning = 0, pxGuests = 0, pxProblems = 0;

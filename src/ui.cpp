@@ -65,7 +65,6 @@ lv_obj_t *quietLabel = nullptr;
 lv_obj_t *wakeButton = nullptr, *wakeLabel = nullptr;  // Wake PC, relabelled with the PC's state
 lv_obj_t *pcStateLabel = nullptr, *pcHint = nullptr;
 lv_obj_t *tvStateLabel = nullptr, *tvInfoLabel = nullptr, *fireStateLabel = nullptr, *fireAppLabel = nullptr;
-lv_obj_t *ps5Power = nullptr;  // the PS5's power button beside its input, green while awake
 lv_obj_t *controlTileStatus[3], *officeTileStatus[2];
 
 lv_obj_t *toast;
@@ -1120,24 +1119,10 @@ void renderControlsPage(Page page) {
       // Inputs, named by the backend (e.g. "PS5"), then the Fire Stick's own remote.
       lv_obj_set_pos(text(pageBody, &lv_font_montserrat_14, kMuted, "Inputs"), 552, 0);
       int y = 20;
-      bool ps5Controls = false;
-      for (const auto &a : snap->actions) ps5Controls |= a.id == "ps5:wake";
       for (const auto &a : snap->actions) {
         if (a.group != "TV inputs") continue;
-        // The PS5's input shares its row with a power button (wake / rest).
-        bool ps5Row = ps5Controls && a.label == "PS5";
-        lv_obj_t *b = actionButton(pageBody, a, ps5Row ? 160 : 224, 58);
+        lv_obj_t *b = actionButton(pageBody, a, 224, 58);
         lv_obj_set_pos(b, 552, y);
-        if (ps5Row) {
-          lv_obj_t *pw = localButton(pageBody, LV_SYMBOL_POWER, [](lv_event_t *) {
-            if (snap && snap->ps5State == "on") confirmThen("ps5:rest", "PS5 rest mode");
-            else run("ps5:wake", "Wake PS5");
-          });
-          lv_obj_set_size(pw, 58, 58);
-          lv_obj_set_pos(pw, 718, y);
-          lv_obj_set_style_border_width(pw, 2, 0);
-          track(pw, &ps5Power);
-        }
         y += 64;
       }
       if (snap->fireConfigured) {
@@ -1725,7 +1710,6 @@ void applyTv() {
     }
     setText(tvInfoLabel, info.c_str());
   }
-  if (ps5Power) setBorder(ps5Power, snap->ps5State == "on" ? kOk : kBorder, 2);
   if (fireStateLabel) {
     setText(fireStateLabel, snap->fireConfigured ? titleCase(snap->fireState).c_str() : "Not set up");
     setTextColor(fireStateLabel, snap->fireState == "off" || !snap->fireConfigured ? kMuted : kOk);
