@@ -30,7 +30,8 @@ a full-screen section with a Back button:
   (in-game time, weather, game-rule switches, disk usage).
 - **Office** — the room's devices: the **PC** (on/off state, Wake-on-LAN,
   a confirm-first shut down and desk/sim display modes) a **TV remote**
-  (power, volume, inputs such as the consoles, d-pad, home, back,
+  (power, volume, inputs such as the consoles, a wake/rest button for a
+  console, d-pad, home, back,
   play/pause) with a side page for a **streaming stick's own remote**, all
   performed by the backend.
 - **Controls** — **Arc** (check now, acknowledge, quiet mode, briefing),
